@@ -1,0 +1,10 @@
+export declare const createShiprocketOrder: (orderId: string, orderData: any, options?: { pickupLocation?: string; shippingIsBilling?: boolean }) => Promise<any>;
+export declare const getShippingRates: (pickupLocationId: string, deliveryPincode: string, weight?: number, orderValue?: number) => Promise<any>;
+export declare const trackShipment: (trackingId: string) => Promise<any>;
+export declare const generateLabel: (shiprocketOrderIds: string[]) => Promise<any>;
+export declare const cancelShiprocketOrder: (shiprocketOrderId: string) => Promise<any>;
+export declare const getShipmentDetails: (shiprocketOrderId: string) => Promise<any>;
+export declare const getTrackingUrl: (awbNumber: string) => string;
+export declare const SHIPROCKET_PICKUP_LOCATION_ID: string;
+export declare const FREE_SHIPPING_PINCODES: Set<string>;
+export declare const calculateBilledWeight: (weightKg: number) => number;

@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Env / secrets (keep *.example committed)
+.env
+.env.*
+!.env.example
+!**/.env.example
+!.env*.example
+
+# Builds & caches
+dist/
+build/
+out/
+.next/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Archives & backups (local copies from VPS)
+*.tar.gz
+*.tgz
+*.zip
+mongo_backup*/
+**/mongo_backup*/
+
+# Backend runtime artifacts
+backend/invoices/*
+!backend/invoices/.gitkeep
+
+# Misc
+coverage/
+.vercel/
+*.pem
+all_code*
