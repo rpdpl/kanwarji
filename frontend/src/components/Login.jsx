@@ -51,13 +51,10 @@ const Login = () => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("user", JSON.stringify(res.data.user));
         toast.success(res.data.message || "Login successful!");
+        window.dispatchEvent(new Event("auth-updated"));
 
-        // Trigger cart-updated event to refresh navbar/bottomnav
-        // Merge guest cart (if any) into the user's server cart when login was initiated from checkout
+        // Merge guest cart (if any) into the user's server cart
         try {
-          const redirectPath = sessionStorage.getItem("redirectAfterLogin");
-
-          // Only perform guest cart merge if there is a guest cart present
           const raw = localStorage.getItem("guestCart");
           const guestItems = raw ? JSON.parse(raw) : [];
 
@@ -65,23 +62,19 @@ const Login = () => {
             const user = res.data.user || JSON.parse(localStorage.getItem("user") || "null");
             const userId = user?.id || user?._id;
             if (userId) {
-              // send each item to server add endpoint (backend accepts quantity)
               for (const it of guestItems) {
                 const productId = it.productId || it._id || it.id;
                 const quantity = it.quantity || 1;
                 try {
                   await apiPost("/api/cart/add", { userId, productId, quantity });
                 } catch (mergeErr) {
-                  // non-fatal: continue merging other items
                   console.warn("Failed to add guest item during merge:", mergeErr);
                 }
               }
-              // clear guest cart after attempting merge
               localStorage.removeItem("guestCart");
             }
           }
 
-          // notify UI to refresh cart (CartContext listens for this)
           window.dispatchEvent(new Event("cart-updated"));
         } catch (e) {
           console.warn("Error during guest cart merge:", e);

@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, ShoppingCart } from "lucide-react"
-import { API_BASE_URL } from "@/app/lib/config"
+import { apiJson } from "@/lib/api-client"
 
 export default function LoginPage() {
   const [emailOrPhone, setEmailOrPhone] = useState("")
@@ -30,27 +30,24 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const data = await apiJson<{
+        success?: boolean
+        token?: string
+        user?: { userType?: string }
+        message?: string
+      }>("/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          emailOrPhone,
-          password,
-        }),
+        json: true,
+        skipAuth: true,
+        body: JSON.stringify({ emailOrPhone, password }),
       })
 
-      const data = await response.json()
-
       if (data.success) {
-        // Store token and user data
-        localStorage.setItem("auth_token", data.token)
+        localStorage.setItem("auth_token", data.token!)
         localStorage.setItem("user_data", JSON.stringify(data.user))
 
-        // Check if user is admin
-        if (data.user.userType === "admin") {
-          router.push("/pannel")
+        if (data.user?.userType === "admin") {
+          router.push("/dashboard/overview")
         } else {
           setError("Admin access required")
         }

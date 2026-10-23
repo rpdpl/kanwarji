@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaTimes, FaChevronDown, FaChevronUp } from "react-icons/fa";
-import { apiGet } from "../utils/axiosInstance";
+import useProducts from "../hooks/useProducts";
 
 // Import category images
 import savoryImg from "../assets/savory.png";
@@ -24,33 +24,30 @@ const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [categoryItems, setCategoryItems] = useState({});
-  const [loading, setLoading] = useState(false);
+  const { products, loading: productsLoading, ensureProducts } = useProducts({
+    limit: 200,
+    enabled: isOpen,
+  });
+  const loading = productsLoading;
 
-  // Fetch items for a category
   const fetchCategoryItems = async (categoryName) => {
-    if (categoryItems[categoryName]) return; // Already fetched
+    if (categoryItems[categoryName]) return;
 
-    setLoading(true);
     try {
-      const res = await apiGet("/api/admin-items?limit=200");
-      if (res.data.success) {
-        const allItems = res.data.items || [];
-        // Filter items by category (case-insensitive partial match)
-        const filteredItems = allItems.filter(
-          (item) =>
-            item.category &&
-            item.category.toLowerCase().includes(categoryName.toLowerCase())
-        );
+      const allItems =
+        products?.length > 0 ? products : await ensureProducts({ limit: 200 });
+      const filteredItems = (allItems || []).filter(
+        (item) =>
+          item.category &&
+          item.category.toLowerCase().includes(categoryName.toLowerCase())
+      );
 
-        setCategoryItems((prev) => ({
-          ...prev,
-          [categoryName]: filteredItems.slice(0, 3), // Get first 3 items
-        }));
-      }
+      setCategoryItems((prev) => ({
+        ...prev,
+        [categoryName]: filteredItems.slice(0, 3),
+      }));
     } catch (error) {
       console.error("Error fetching category items:", error);
-    } finally {
-      setLoading(false);
     }
   };
 

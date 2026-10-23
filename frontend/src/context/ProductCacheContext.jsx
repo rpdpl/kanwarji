@@ -1,14 +1,23 @@
-import React, { createContext, useContext, useRef, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useRef,
+  useCallback,
+  useState,
+} from "react";
+import { getAdminItems } from "../api/products";
 
-// Simple in-memory + localStorage backed product cache to avoid re-fetching lists
-// Structure: { [id]: productObject }
-
+// In-memory + localStorage product cache + shared list fetch
 const ProductCacheContext = createContext(null);
 
 export const ProductCacheProvider = ({ children }) => {
   const cacheRef = useRef({});
+  const listRef = useRef(null);
+  const listMetaRef = useRef(null);
+  const inflightRef = useRef(null);
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(false);
 
-  // hydrate from localStorage once (lazy)
   if (Object.keys(cacheRef.current).length === 0) {
     try {
       const raw = localStorage.getItem("product-cache-v1");
@@ -20,14 +29,14 @@ export const ProductCacheProvider = ({ children }) => {
     try {
       localStorage.setItem(
         "product-cache-v1",
-        JSON.stringify(cacheRef.current).slice(0, 200000) // guard size
+        JSON.stringify(cacheRef.current).slice(0, 200000)
       );
     } catch (e) {}
   };
 
-  const putMany = useCallback((products = []) => {
+  const putMany = useCallback((items = []) => {
     let changed = false;
-    products.forEach((p) => {
+    items.forEach((p) => {
       const id = p?._id || p?.id;
       if (!id) return;
       if (!cacheRef.current[id]) {
@@ -48,11 +57,65 @@ export const ProductCacheProvider = ({ children }) => {
 
   const getOne = useCallback((id) => cacheRef.current[id] || null, []);
 
+  const ensureProducts = useCallback(
+    async ({ limit = 200, status, force = false } = {}) => {
+      const prev = listMetaRef.current;
+      const needsUpgrade =
+        !!listRef.current?.length &&
+        ((limit && prev && limit > (prev.limit || 0)) ||
+          (status && prev && status !== prev.status));
+
+      if (
+        !force &&
+        !needsUpgrade &&
+        listRef.current &&
+        listRef.current.length > 0
+      ) {
+        return listRef.current;
+      }
+      if (inflightRef.current) {
+        return inflightRef.current;
+      }
+
+      setProductsLoading(true);
+      const promise = (async () => {
+        try {
+          const res = await getAdminItems({ limit, status });
+          const items =
+            res.data?.success && Array.isArray(res.data.items)
+              ? res.data.items
+              : [];
+          listRef.current = items;
+          listMetaRef.current = { limit, status };
+          setProducts(items);
+          putMany(items);
+          return items;
+        } catch (e) {
+          if (!listRef.current) {
+            listRef.current = [];
+            setProducts([]);
+          }
+          return listRef.current || [];
+        } finally {
+          setProductsLoading(false);
+          inflightRef.current = null;
+        }
+      })();
+
+      inflightRef.current = promise;
+      return promise;
+    },
+    [putMany]
+  );
+
   const value = {
     getOne,
     putOne,
     putMany,
     all: cacheRef.current,
+    products,
+    productsLoading,
+    ensureProducts,
   };
 
   return (

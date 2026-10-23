@@ -5,13 +5,23 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
-import { apiGet, apiPut, apiDelete, apiPost } from "../utils/axiosInstance";
+import { getMe } from "../api/auth";
+import {
+  getCart,
+  addToCart as addToCartApi,
+  updateCart as updateCartApi,
+  removeFromCart as removeFromCartApi,
+  clearCart as clearCartApi,
+  deleteCart as deleteCartApi,
+} from "../api/cart";
+import { useAuth } from "./AuthContext";
 
 const CartContext = createContext();
 
 export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
+  const { userId: authUserId } = useAuth();
   const [cart, setCart] = useState({
     cartItems: [],
     totalItems: 0,
@@ -19,22 +29,26 @@ export const CartProvider = ({ children }) => {
   });
   const [loading, setLoading] = useState(false);
 
-  // Manual shipping calculation logic removed to prefer API-based calculation via Shiprocket
+  const resolveUserId = useCallback(async () => {
+    if (authUserId) return authUserId;
+    const me = await getMe();
+    if (!me.data?.success) return null;
+    return me.data.user.id || me.data.user._id || null;
+  }, [authUserId]);
 
-
-  // Fetch cart once on mount
   const fetchCart = useCallback(async () => {
     setLoading(true);
     try {
-      const me = await apiGet("/api/auth/me");
-      if (!me.data.success) return;
-      const userId = me.data.user.id || me.data.user._id;
-      const res = await apiGet(`/api/cart/${userId}`);
+      if (!localStorage.getItem("token")) {
+        throw new Error("guest");
+      }
+      const userId = await resolveUserId();
+      if (!userId) throw new Error("not logged in");
+      const res = await getCart(userId);
       if (res.data.success) {
         setCart(res.data);
       }
     } catch (err) {
-      // Not logged in or error -> fall back to guest cart in localStorage
       try {
         const raw = localStorage.getItem("guestCart");
         const items = raw ? JSON.parse(raw) : [];
@@ -50,46 +64,50 @@ export const CartProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resolveUserId]);
 
   useEffect(() => {
     fetchCart();
   }, [fetchCart]);
 
-  // Listen for global cart-updated events (e.g., after login or external sync)
   useEffect(() => {
     const onCartUpdated = () => fetchCart();
     window.addEventListener("cart-updated", onCartUpdated);
     return () => window.removeEventListener("cart-updated", onCartUpdated);
   }, [fetchCart]);
 
-  // Cart actions
-  // Accept either a product id (string) or a product object as first arg
   const addToCart = async (productOrId, quantity = 1) => {
     setLoading(true);
     try {
-      // Try server-side add (logged-in user)
-      const me = await apiGet("/api/auth/me");
-      if (me.data && me.data.success) {
-        const userId = me.data.user.id || me.data.user._id;
+      const userId = await resolveUserId();
+      if (userId) {
         const productId =
           typeof productOrId === "string"
             ? productOrId
             : productOrId._id || productOrId.id || productOrId.productId;
-        const itemObj = typeof productOrId === "object" ? productOrId : { productId };
-        const variantLabel = itemObj.selectedVariant || itemObj.variantLabel || "";
+        const itemObj =
+          typeof productOrId === "object" ? productOrId : { productId };
+        const variantLabel =
+          itemObj.selectedVariant || itemObj.variantLabel || "";
         const unit = itemObj.unit || variantLabel || "";
         const priceOverride = Number(itemObj.price || itemObj.cost || 0);
-        const payload = { userId, productId, quantity, unit, variantLabel, priceOverride };
-        const res = await apiPost("/api/cart/add", payload);
+        const payload = {
+          userId,
+          productId,
+          quantity,
+          unit,
+          variantLabel,
+          priceOverride,
+        };
+        const res = await addToCartApi(payload);
         if (res.data.success) {
           await fetchCart();
           return true;
         }
         return false;
       }
+      throw new Error("guest");
     } catch (err) {
-      // Guest flow: store cart in localStorage under 'guestCart'
       try {
         const raw = localStorage.getItem("guestCart");
         const items = raw ? JSON.parse(raw) : [];
@@ -97,15 +115,19 @@ export const CartProvider = ({ children }) => {
           typeof productOrId === "string"
             ? productOrId
             : productOrId._id || productOrId.id || productOrId.productId;
-        const itemObj = typeof productOrId === "object" ? productOrId : { productId };
-        const selectedVariantLabel = itemObj.selectedVariant || itemObj.variantLabel || "";
+        const itemObj =
+          typeof productOrId === "object" ? productOrId : { productId };
+        const selectedVariantLabel =
+          itemObj.selectedVariant || itemObj.variantLabel || "";
         const unit = itemObj.unit || selectedVariantLabel || "";
         const price = Number(itemObj.price || itemObj.cost || 0);
-        const maxQty = typeof itemObj.maxQty !== "undefined" ? Number(itemObj.maxQty) : (
-          itemObj.selectedVariant && typeof itemObj.selectedVariant.quantity !== "undefined"
-            ? Number(itemObj.selectedVariant.quantity)
-            : undefined
-        );
+        const maxQty =
+          typeof itemObj.maxQty !== "undefined"
+            ? Number(itemObj.maxQty)
+            : itemObj.selectedVariant &&
+                typeof itemObj.selectedVariant.quantity !== "undefined"
+              ? Number(itemObj.selectedVariant.quantity)
+              : undefined;
         const productKey = `${productId}__${unit}`;
 
         const existing = items.find((it) => it.productKey === productKey);
@@ -116,9 +138,12 @@ export const CartProvider = ({ children }) => {
             productId,
             productKey,
             quantity,
-            name: selectedVariantLabel ? `${itemObj.name || itemObj.title || ""} (${selectedVariantLabel})` : (itemObj.name || itemObj.title || ""),
+            name: selectedVariantLabel
+              ? `${itemObj.name || itemObj.title || ""} (${selectedVariantLabel})`
+              : itemObj.name || itemObj.title || "",
             price,
-            imageUrl: itemObj.imageUrl || (itemObj.images && itemObj.images[0]) || "",
+            imageUrl:
+              itemObj.imageUrl || (itemObj.images && itemObj.images[0]) || "",
             unit,
             selectedVariantLabel,
             maxQty,
@@ -144,37 +169,47 @@ export const CartProvider = ({ children }) => {
   const updateQty = async (identifier, quantity) => {
     setLoading(true);
     try {
-      const me = await apiGet("/api/auth/me");
-      if (me.data && me.data.success) {
-        const userId = me.data.user.id || me.data.user._id;
+      const userId = await resolveUserId();
+      if (userId) {
         let productId, unit, variantLabel;
         if (typeof identifier === "object" && identifier !== null) {
           productId = identifier.productId || identifier._id;
           unit = identifier.unit || identifier.variantLabel || undefined;
           variantLabel = identifier.variantLabel || undefined;
         } else {
-          // fallback when only a composite key or id is provided
           const key = String(identifier);
           const parts = key.split("__");
           productId = parts[0];
           unit = parts[1] || undefined;
         }
-        await apiPut("/api/cart/update", { userId, productId, unit, variantLabel, quantity });
+        await updateCartApi({
+          userId,
+          productId,
+          unit,
+          variantLabel,
+          quantity,
+        });
         await fetchCart();
         return true;
       }
+      throw new Error("guest");
     } catch (err) {
-      // guest flow
       try {
         const raw = localStorage.getItem("guestCart");
         const items = raw ? JSON.parse(raw) : [];
         const key = String(identifier);
         const existing = items.find(
-          (it) => it.productKey === key || String(it.productId) === key || String(it._id) === key
+          (it) =>
+            it.productKey === key ||
+            String(it.productId) === key ||
+            String(it._id) === key
         );
         if (!existing) return false;
         if (typeof existing.maxQty !== "undefined") {
-          quantity = Math.max(1, Math.min(Number(quantity || 0), Number(existing.maxQty)));
+          quantity = Math.max(
+            1,
+            Math.min(Number(quantity || 0), Number(existing.maxQty))
+          );
         } else {
           quantity = Math.max(1, Number(quantity || 0));
         }
@@ -198,9 +233,8 @@ export const CartProvider = ({ children }) => {
   const removeItem = async (identifier) => {
     setLoading(true);
     try {
-      const me = await apiGet("/api/auth/me");
-      if (me.data && me.data.success) {
-        const userId = me.data.user.id || me.data.user._id;
+      const userId = await resolveUserId();
+      if (userId) {
         let productId, unit, variantLabel;
         if (typeof identifier === "object" && identifier !== null) {
           productId = identifier.productId || identifier._id;
@@ -212,17 +246,23 @@ export const CartProvider = ({ children }) => {
           productId = parts[0];
           unit = parts[1] || undefined;
         }
-        await apiDelete("/api/cart/remove", { data: { userId, productId, unit, variantLabel } });
+        await removeFromCartApi({ userId, productId, unit, variantLabel });
         await fetchCart();
         return true;
       }
+      throw new Error("guest");
     } catch (err) {
       try {
         const raw = localStorage.getItem("guestCart");
         const items = raw ? JSON.parse(raw) : [];
         const key = String(identifier);
         const filtered = items.filter(
-          (it) => !(it.productKey === key || String(it.productId) === key || String(it._id) === key)
+          (it) =>
+            !(
+              it.productKey === key ||
+              String(it.productId) === key ||
+              String(it._id) === key
+            )
         );
         localStorage.setItem("guestCart", JSON.stringify(filtered));
         const totalItems = filtered.reduce((s, it) => s + (it.quantity || 0), 0);
@@ -243,31 +283,25 @@ export const CartProvider = ({ children }) => {
   const clearCart = async () => {
     setLoading(true);
     try {
-      const me = await apiGet("/api/auth/me");
-      if (me.data && me.data.success) {
-        const userId = me.data.user.id || me.data.user._id;
+      const userId = await resolveUserId();
+      if (userId) {
         try {
-          // Try to clear from server
-          await apiDelete(`/api/cart/clear/${userId}`);
+          await clearCartApi(userId);
         } catch (serverErr) {
-          // If clear endpoint doesn't exist, try delete instead
           try {
-            await apiDelete(`/api/cart/${userId}`);
+            await deleteCartApi(userId);
           } catch (_) {
-            // Server deletion failed, continue to clear local cart
             console.warn("Could not clear cart from server");
           }
         }
-        // Always fetch to refresh cart state
         await fetchCart();
         return true;
       }
+      throw new Error("guest");
     } catch (err) {
-      // Not logged in - clear guest cart
       try {
         localStorage.removeItem("guestCart");
         setCart({ cartItems: [], totalItems: 0, totalPrice: 0 });
-        // Dispatch event so other components know cart was cleared
         window.dispatchEvent(new Event("cart-updated"));
         return true;
       } catch (e) {
@@ -289,7 +323,6 @@ export const CartProvider = ({ children }) => {
         updateQty,
         removeItem,
         clearCart,
-
       }}
     >
       {children}

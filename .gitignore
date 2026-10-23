@@ -35,6 +35,8 @@ Desktop.ini
 !.vscode/extensions.json
 *.swp
 *.swo
+*.code-workspace
+.cursor/
 
 # Archives & backups (local copies from VPS)
 *.tar.gz

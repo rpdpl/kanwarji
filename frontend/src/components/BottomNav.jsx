@@ -3,35 +3,19 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IoHomeOutline } from "react-icons/io5";
 import { MdCategory, MdDiscount } from "react-icons/md";
 import { FaUserCircle } from "react-icons/fa";
-import { apiGet } from "../utils/axiosInstance";
+import { useAuth } from "../context/AuthContext";
 
 const BottomNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname || "/";
   const [profileDropup, setProfileDropup] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isAuthenticated: isLoggedIn } = useAuth();
 
   const isActive = (p) => {
     if (p === "/home") return path === "/home" || path === "/";
     return path.startsWith(p);
   };
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const me = await apiGet("/api/auth/me");
-        setIsLoggedIn(me.data.success);
-      } catch (err) {
-        setIsLoggedIn(false);
-      }
-    };
-    checkAuth();
-
-    const handler = () => checkAuth();
-    window.addEventListener("cart-updated", handler);
-    return () => window.removeEventListener("cart-updated", handler);
-  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {

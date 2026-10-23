@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { apiGet } from "../utils/axiosInstance";
+import { getCategories } from "../api/products";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { useProductCache } from "../context/ProductCacheContext";
+import useProducts from "../hooks/useProducts";
 import AddToCartButton from "./AddToCartButton";
 import Footer from "./Footer";
 
@@ -17,8 +17,7 @@ const defaultPills = [
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [catsLoading, setCatsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedPill, setSelectedPill] = useState("All");
   const [sort, setSort] = useState("default");
@@ -26,7 +25,8 @@ const Categories = () => {
   const [variantIndexByItem, setVariantIndexByItem] = useState({});
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { putMany } = useProductCache();
+  const { products: items, loading: itemsLoading } = useProducts({ limit: 200 });
+  const loading = catsLoading || itemsLoading;
 
   useEffect(() => {
     const qCat = searchParams.get("category");
@@ -39,34 +39,28 @@ const Categories = () => {
 
   useEffect(() => {
     const load = async () => {
-      setLoading(true);
+      setCatsLoading(true);
       try {
-        const [catRes, itemsRes] = await Promise.all([
-          apiGet("/api/categories"),
-          apiGet("/api/admin-items?limit=200"),
-        ]);
+        const catRes = await getCategories();
         if (catRes.data.success) setCategories(catRes.data.categories || []);
-        if (itemsRes.data.success) {
-          setItems(itemsRes.data.items || []);
-          putMany(itemsRes.data.items || []);
-          // Debug: log all unique categories
-          const uniqueCategories = [
-            ...new Set(
-              (itemsRes.data.items || []).map((item) => item.category)
-            ),
-          ];
-          console.log("Available categories in items:", uniqueCategories);
-        }
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
+        setCatsLoading(false);
       }
     };
     load();
   }, []);
 
-  const filtered = items.filter((it) => {
+  useEffect(() => {
+    if (!items?.length) return;
+    const uniqueCategories = [
+      ...new Set(items.map((item) => item.category)),
+    ];
+    console.log("Available categories in items:", uniqueCategories);
+  }, [items]);
+
+  const filtered = (items || []).filter((it) => {
     if (selectedPill && selectedPill !== "All") {
       // match category roughly
       if (!it.category) return false;

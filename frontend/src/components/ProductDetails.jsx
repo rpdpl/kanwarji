@@ -1,20 +1,22 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { apiGet } from "../utils/axiosInstance";
 import { useCart } from "../context/CartContext";
 import { toast } from "react-toastify";
 import { HiOutlineCheckCircle } from "react-icons/hi";
 import { FiChevronRight, FiMinus, FiPlus } from "react-icons/fi";
 import { AiOutlineShoppingCart } from "react-icons/ai";
 import AddToCartButton from "./AddToCartButton";
-import { useProductCache } from "../context/ProductCacheContext";
+import useProducts from "../hooks/useProducts";
 import BottomNav from "./BottomNav";
 
 const ProductDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { getOne, putOne, putMany } = useProductCache();
+  const { getOne, putOne, products, ensureProducts } = useProducts({
+    limit: 500,
+    status: "all",
+  });
   const [item, setItem] = useState(null); // current product
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,7 +33,6 @@ const ProductDetails = () => {
       setLoading(true);
       setError(null);
       try {
-        // route state
         const routeProduct = location.state?.product;
         if (
           routeProduct &&
@@ -40,42 +41,31 @@ const ProductDetails = () => {
           setItem(routeProduct);
           putOne(routeProduct);
         }
-        // cache
         if (!routeProduct) {
           const cached = getOne(productId);
           if (cached) setItem(cached);
         }
         let found = routeProduct || getOne(productId) || null;
-        // one bulk fetch if needed
-        if (!found) {
-          const res = await apiGet("/api/admin-items?limit=500&status=all");
-          if (res.data?.success && Array.isArray(res.data.items)) {
-            putMany(res.data.items);
-            setAllProducts(res.data.items); // Set all products for display
-            found = res.data.items.find(
-              (it) => it._id === productId || it.id === productId
-            );
-            if (found) {
-              const rel = res.data.items.filter(
-                (it) => (it._id || it.id) !== (found._id || found.id)
-              );
-              setRelated(rel.slice(0, 12));
-            }
-          }
-        } else {
-          // async related and all products
-          apiGet("/api/admin-items?limit=500&status=available")
-            .then((res) => {
-              if (!res.data?.success || !Array.isArray(res.data.items)) return;
-              putMany(res.data.items);
-              setAllProducts(res.data.items); // Set all products for display
-              const rel = res.data.items.filter(
-                (it) => (it._id || it.id) !== (found._id || found.id)
-              );
-              setRelated(rel.slice(0, 12));
-            })
-            .catch(() => {});
+
+        const list =
+          products?.length > 0
+            ? products
+            : await ensureProducts({ limit: 500, status: "all" });
+        setAllProducts(list || []);
+
+        if (!found && list?.length) {
+          found = list.find(
+            (it) => it._id === productId || it.id === productId
+          );
         }
+
+        if (found && list?.length) {
+          const rel = list.filter(
+            (it) => (it._id || it.id) !== (found._id || found.id)
+          );
+          setRelated(rel.slice(0, 12));
+        }
+
         if (!found) {
           setError("Product not found");
           setItem(null);
@@ -89,7 +79,7 @@ const ProductDetails = () => {
         setLoading(false);
       }
     },
-    [getOne, location.state, putMany, putOne]
+    [ensureProducts, getOne, location.state, products, putOne]
   );
 
   useEffect(() => {

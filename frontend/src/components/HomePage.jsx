@@ -2,9 +2,8 @@ import { useSEO } from "../utils/Seo.jsx";
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import Footer from "./Footer";
-import { apiGet } from "../utils/axiosInstance.jsx";
 import { useNavigate } from "react-router-dom";
-import { useProductCache } from "../context/ProductCacheContext";
+import useProducts from "../hooks/useProducts";
 import AddToCartButton from "./AddToCartButton";
 
 // Import images using Vite's explicit import syntax
@@ -36,33 +35,13 @@ const HomePage = () => {
       "buy sweets online, traditional Indian sweets, best sweets in Delhi, Chandni Chowk sweets, Indian mithai online, dry fruits gift pack online, Diwali sweets hamper, wedding sweets box, buy namkeen online, kaju katli online, buy kaju katli online, traditional kaju katli, best kaju katli in Delhi, buy soan papdi online, premium soan papdi, Diwali soan papdi box, dry fruit hamper, festive dry fruit basket, dry fruit gift box online, traditional namkeen online, Chandni Chowk namkeen, spicy Indian namkeen, Indian sweets gift box, corporate gifting sweets, wedding sweet box, authentic Indian sweets online, premium mithai delivery in Delhi, order sweets from Chandni Chowk, online delivery of traditional Indian sweets, send sweets to USA from India, best Diwali sweets under 500, best Diwali sweets under 1000, customized wedding sweets box online, handmade sweets online India, online mithai shop Delhi",
   });
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [sliderIndex, setSliderIndex] = useState(0);
   const [imageIndices, setImageIndices] = useState({});
   const [variantIndexByItem, setVariantIndexByItem] = useState({});
 
   const productsRef = useRef(null);
-  const { putMany } = useProductCache();
+  const { products: items, loading } = useProducts({ limit: 200 });
   const navigate = useNavigate();
-  // Fetch products from /api/admin-items (GET)
-  useEffect(() => {
-    const fetchItems = async () => {
-      setLoading(true);
-      try {
-        const res = await apiGet("/api/admin-items?limit=200");
-        if (res.data.success && Array.isArray(res.data.items)) {
-          setItems(res.data.items);
-          putMany(res.data.items);
-        }
-      } catch (error) {
-        // Optionally show toast or error
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchItems();
-  }, []);
 
   // Slideshow logic
   useEffect(() => {

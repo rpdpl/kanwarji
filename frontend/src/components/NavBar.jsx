@@ -9,29 +9,20 @@ import {
 } from "react-icons/fa";
 import logo1 from "../assets/logo1.png";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 import CartSidebar from "./CartSidebar";
 
 const NavBar = () => {
   const { cart } = useCart();
+  const { isAuthenticated: isLoggedIn } = useAuth();
   const [cartSidebarOpen, setCartSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [profileDropdown, setProfileDropdown] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const isLoggedInRef = useRef(false);
   const headerRef = useRef(null);
-
-  // Set isLoggedIn based on token in localStorage
-  useEffect(() => {
-    setIsLoggedIn(!!localStorage.getItem("token"));
-    const handleLogout = () => setIsLoggedIn(false);
-    window.addEventListener("logout", handleLogout);
-    return () => {
-      window.removeEventListener("logout", handleLogout);
-    };
-  }, []);
 
   // Categories to show in navbar
   const navCategories = [

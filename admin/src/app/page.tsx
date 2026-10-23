@@ -14,7 +14,7 @@ export default function HomePage() {
     if (token && userData) {
       const user = JSON.parse(userData)
       if (user.userType === "admin") {
-        router.push("/pannel")
+        router.push("/dashboard/overview")
       } else {
         router.push("/login")
       }

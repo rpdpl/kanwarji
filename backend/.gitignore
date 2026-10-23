@@ -30,3 +30,7 @@ Thumbs.db
 # Debug
 .npm
 .eslintcache
+
+# Pre-refactor monolith snapshot
+server.pre-split.js.bak
+*.pre-split.js.bak
