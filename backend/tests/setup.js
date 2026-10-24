@@ -1,0 +1,10 @@
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test-jwt-secret";
+process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/jest-unused";
+process.env.SERVER_BASE_URL = "http://localhost:5000";
+process.env.CLIENT_BASE_URL = "http://localhost:5173";
+process.env.SHIPROCKET_EMAIL = "";
+process.env.SHIPROCKET_PASSWORD = "";
+process.env.SHIPROCKET_CHANNEL_ID = "";
+process.env.EMAIL_USER = "test@example.com";
+process.env.EMAIL_PASSWORD = "test-password";
