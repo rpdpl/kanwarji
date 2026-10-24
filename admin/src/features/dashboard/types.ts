@@ -69,6 +69,12 @@ export interface Order {
   specialRequests?: string
   createdAt: string
   convenienceFee?: number
+  shiprocketOrderId?: string
+  shipmentStatus?: string
+  shiprocketError?: string
+  awbNumber?: string
+  shiprocketFee?: number
+  isLocalShiprocket?: boolean
 }
 
 export interface CancellationRequest {

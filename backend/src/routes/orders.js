@@ -231,12 +231,23 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
                     await order.save();
                     console.log(`Shiprocket order created: ${shiprocketResult.shiprocketOrderId}`);
                 } else {
-                    order.shiprocketError = shiprocketResult.error;
+                    order.shiprocketError =
+                        shiprocketResult.error ||
+                        (shiprocket.getLastAuthError && shiprocket.getLastAuthError()) ||
+                        "Shiprocket create failed";
+                    order.shipmentStatus = "failed";
                     await order.save();
-                    console.error("Shiprocket creation failed:", shiprocketResult.error);
+                    console.error("Shiprocket creation failed:", order.shiprocketError);
                 }
             } catch (shipmentError) {
                 console.error(`[ORDER ${order.orderId}] Shiprocket API Error:`, shipmentError.message);
+                try {
+                    order.shiprocketError = shipmentError.message;
+                    order.shipmentStatus = "failed";
+                    await order.save();
+                } catch (_) {
+                    /* ignore */
+                }
             }
         } else if (shouldUseInstamojoForPincode(order.address.pincode)) {
             // Local shiprocket pincode
@@ -386,6 +397,11 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
                 totalAmount: order.totalAmount,
                 paymentStatus: order.paymentStatus,
                 orderStatus: order.orderStatus,
+                paymentMethod: order.paymentMethod,
+                shipmentStatus: order.shipmentStatus,
+                shiprocketOrderId: order.shiprocketOrderId || null,
+                shiprocketError: order.shiprocketError || null,
+                isLocalShiprocket: !!order.isLocalShiprocket,
                 estimatedShiprocket: order.estimatedShiprocket,
                 specialRequests: order.specialRequests, // Include in response
                 createdAt: order.createdAt,

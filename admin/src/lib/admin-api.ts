@@ -181,6 +181,20 @@ export async function markOrderPaid(orderId: string) {
   })
 }
 
+/** Retry Shiprocket shipment creation for a failed/outstation order. */
+export async function retryShiprocketOrder(orderId: string) {
+  return apiJson<{
+    success?: boolean
+    message?: string
+    shiprocketOrderId?: string
+    error?: string
+  }>("/shiprocket/retry-order", {
+    method: "POST",
+    json: true,
+    body: JSON.stringify({ orderId }),
+  })
+}
+
 export function mapVariants(variants: VariantInput[]) {
   return variants.map((v) => ({
     label: v.label,

@@ -530,11 +530,15 @@ app.get("/api/user/orders", authenticateToken, async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
 
-        // Only show paid orders that are confirmed or cancelled
+        // Show paid online orders, plus COD (payment often stays pending until delivery)
         const query = {
             userId,
-            paymentStatus: "paid",
-            orderStatus: { $in: ["confirmed", "cancelled"] }
+            orderStatus: { $in: ["confirmed", "cancelled", "processing", "shipped", "delivered"] },
+            $or: [
+                { paymentStatus: "paid" },
+                { paymentMethod: "cod" },
+                { paymentId: { $exists: true, $nin: [null, ""] } },
+            ],
         };
         const orders = await Order.find(query)
             .sort({ createdAt: -1 })

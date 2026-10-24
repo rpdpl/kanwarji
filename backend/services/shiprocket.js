@@ -4,6 +4,20 @@ const SHIPROCKET_BASE = "https://apiv2.shiprocket.in/v1/external";
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
+let lastAuthError = null;
+
+function getPickupLocation(orderData = {}) {
+  return (
+    orderData.pickupLocation ||
+    process.env.SHIPROCKET_PICKUP_LOCATION ||
+    "Primary"
+  );
+}
+
+function clearTokenCache() {
+  cachedToken = null;
+  tokenExpiresAt = 0;
+}
 
 async function getShiprocketToken() {
   const now = Date.now();
@@ -15,7 +29,9 @@ async function getShiprocketToken() {
   const password = process.env.SHIPROCKET_PASSWORD;
 
   if (!email || !password) {
-    console.warn("[SHIPROCKET] Missing SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD");
+    lastAuthError =
+      "Missing SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD in backend .env";
+    console.warn("[SHIPROCKET]", lastAuthError);
     return null;
   }
 
@@ -26,16 +42,23 @@ async function getShiprocketToken() {
     });
 
     cachedToken = response.data?.token || null;
-    // Cache for ~9 days (Shiprocket tokens typically last 10 days)
     tokenExpiresAt = now + 9 * 24 * 60 * 60 * 1000;
+    lastAuthError = null;
     return cachedToken;
   } catch (error) {
-    console.error(
-      "[SHIPROCKET] Auth failed:",
-      error.response?.data || error.message
-    );
-    cachedToken = null;
-    tokenExpiresAt = 0;
+    const status = error.response?.status;
+    const apiMsg =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.message;
+    clearTokenCache();
+    if (status === 403) {
+      lastAuthError =
+        "Shiprocket Access forbidden (403). Use a dedicated API user from Settings → API (not the panel login), enable Orders/Courier modules, then update SHIPROCKET_EMAIL/PASSWORD.";
+    } else {
+      lastAuthError = `Shiprocket auth failed${status ? ` (${status})` : ""}: ${apiMsg}`;
+    }
+    console.error("[SHIPROCKET] Auth failed:", error.response?.data || error.message);
     return null;
   }
 }
@@ -43,7 +66,10 @@ async function getShiprocketToken() {
 async function shiprocketRequest(method, path, data) {
   const token = await getShiprocketToken();
   if (!token) {
-    return { success: false, error: "Shiprocket authentication failed" };
+    return {
+      success: false,
+      error: lastAuthError || "Shiprocket authentication failed",
+    };
   }
 
   try {
@@ -108,7 +134,7 @@ async function createShiprocketOrder(orderData = {}) {
     order_date:
       orderData.orderDate ||
       new Date().toISOString().slice(0, 19).replace("T", " "),
-    pickup_location: orderData.pickupLocation || "Primary",
+    pickup_location: getPickupLocation(orderData),
     channel_id: process.env.SHIPROCKET_CHANNEL_ID || undefined,
     billing_customer_name: firstName,
     billing_last_name: lastName,
@@ -138,15 +164,40 @@ async function createShiprocketOrder(orderData = {}) {
   };
 
   const result = await shiprocketRequest("post", "/orders/create/adhoc", payload);
-  if (!result.success) return result;
+  if (!result.success) {
+    return {
+      ...result,
+      error: result.error || lastAuthError || "Shiprocket create failed",
+    };
+  }
+
+  const data = result.data || {};
+  // Shiprocket sometimes returns HTTP 200 with an error message in the body
+  const bodyMsg = String(data.message || "");
+  const looksLikeError =
+    /wrong pickup|invalid|does not exist|failed|error/i.test(bodyMsg) &&
+    !data.order_id &&
+    !data.shipment_id;
+
+  const shiprocketOrderId =
+    data.order_id ||
+    data.shipment_id ||
+    data?.data?.order_id ||
+    data?.data?.shipment_id ||
+    null;
+
+  if (looksLikeError || !shiprocketOrderId) {
+    return {
+      success: false,
+      error: bodyMsg || "Shiprocket create returned no order id",
+      data,
+    };
+  }
 
   return {
     success: true,
-    shiprocketOrderId:
-      result.data?.order_id ||
-      result.data?.shipment_id ||
-      result.data?.order_id?.toString(),
-    data: result.data,
+    shiprocketOrderId,
+    data,
   };
 }
 
@@ -158,7 +209,10 @@ async function getShippingRate(
 ) {
   const token = await getShiprocketToken();
   if (!token) {
-    return { success: false, error: "Shiprocket authentication failed" };
+    return {
+      success: false,
+      error: lastAuthError || "Shiprocket authentication failed",
+    };
   }
 
   try {
@@ -213,4 +267,6 @@ module.exports = {
   generateLabel,
   cancelShiprocketOrder,
   getShipmentDetails,
+  clearTokenCache,
+  getLastAuthError: () => lastAuthError,
 };

@@ -18,6 +18,10 @@ async function main() {
   console.log("EMAIL set:", mask(process.env.SHIPROCKET_EMAIL));
   console.log("PASSWORD set:", process.env.SHIPROCKET_PASSWORD ? "yes" : "no");
   console.log("CHANNEL_ID:", process.env.SHIPROCKET_CHANNEL_ID || "(empty — OK)");
+  console.log(
+    "PICKUP:",
+    process.env.SHIPROCKET_PICKUP_LOCATION || "Primary"
+  );
 
   // 1) Auth
   console.log("\n[1] Auth login…");
@@ -52,16 +56,18 @@ async function main() {
   // 3) Demo create order (then cancel)
   const demoOrderId = "SMOKE-" + Date.now();
   console.log("\n[3] Create demo adhoc order", demoOrderId, "…");
+  const pickup =
+    process.env.SHIPROCKET_PICKUP_LOCATION || "Primary";
   const created = await shiprocket.createShiprocketOrder({
     orderId: demoOrderId,
-    pickupLocation: "Primary",
+    pickupLocation: pickup,
     billingCustomerName: "Smoke Test",
     billingAddress: "Test Address Line 1",
     billingCity: "Mumbai",
     billingPincode: "400001",
     billingState: "Maharashtra",
     billingEmail: process.env.SHIPROCKET_EMAIL || "smoke@example.com",
-    billingPhone: "9999999999",
+    billingPhone: "9876543210",
     paymentMethod: "Prepaid",
     subtotal: 199,
     weight: 0.5,
@@ -82,18 +88,16 @@ async function main() {
     console.error("FAIL: create order:", created.error);
     console.error(JSON.stringify(created.data || {}, null, 2));
     console.error(
-      "\nHint: pickup location nickname in Shiprocket must be \"Primary\" (or set pickupLocation)."
+      "\nHint: set SHIPROCKET_PICKUP_LOCATION to the exact nickname from Shiprocket pickup list (this shop: work)."
     );
     process.exit(1);
   }
 
   console.log("OK: Shiprocket order id:", created.shiprocketOrderId);
-  const shipmentId =
-    created.data?.shipment_id ||
-    created.data?.shipment_id?.toString() ||
-    created.shiprocketOrderId;
+  console.log("    shipment_id:", created.data?.shipment_id || "(n/a)");
+  console.log("    channel_order_id:", created.data?.channel_order_id || demoOrderId);
 
-  // 4) Cancel demo
+  // 4) Cancel demo (Shiprocket cancel API expects numeric order id)
   console.log("\n[4] Cancel demo order…");
   const cancelled = await shiprocket.cancelShiprocketOrder(created.shiprocketOrderId);
   if (!cancelled.success) {

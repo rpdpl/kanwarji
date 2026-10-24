@@ -15,9 +15,11 @@ describe("services/shiprocket (mocked axios)", () => {
     jest.clearAllMocks();
     jest.spyOn(console, "warn").mockImplementation(() => {});
     jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "log").mockImplementation(() => {});
     delete process.env.SHIPROCKET_EMAIL;
     delete process.env.SHIPROCKET_PASSWORD;
     delete process.env.SHIPROCKET_CHANNEL_ID;
+    delete process.env.SHIPROCKET_PICKUP_LOCATION;
   });
 
   afterEach(() => {
@@ -64,10 +66,8 @@ describe("services/shiprocket (mocked axios)", () => {
     it("fails when auth is unavailable", async () => {
       const shiprocket = loadShiprocket();
       const result = await shiprocket.getShippingRate("110006", "400001", 0.5);
-      expect(result).toEqual({
-        success: false,
-        error: "Shiprocket authentication failed",
-      });
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Missing SHIPROCKET|authentication failed/i);
     });
 
     it("calls serviceability with pickup, delivery, weight, COD", async () => {
@@ -184,5 +184,6 @@ describe("services/shiprocket (mocked axios)", () => {
       const call = axios.mock.calls[0][0];
       expect(call.data.channel_id).toBeUndefined();
     });
+
   });
 });

@@ -324,11 +324,16 @@ app.post("/api/shiprocket/retry-order", authenticateToken, requireAdmin, async (
             });
         }
 
-        // Check if order is paid
-        if (order.paymentStatus !== "paid") {
+        // Allow prepaid (paid) or COD confirmed orders
+        const canShip =
+            order.paymentStatus === "paid" ||
+            (order.paymentMethod === "cod" &&
+                ["confirmed", "processing", "pending"].includes(order.orderStatus));
+        if (!canShip) {
             return res.status(400).json({
                 success: false,
-                message: "Cannot create Shiprocket order for unpaid orders",
+                message:
+                    "Cannot create Shiprocket order: need paid online order or confirmed COD order",
             });
         }
 

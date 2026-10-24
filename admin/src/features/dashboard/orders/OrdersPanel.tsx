@@ -15,10 +15,28 @@ type Props = {
   setOrderSearchTerm: (v: string) => void
   downloadInvoice: (order: Order) => void
   onRequestCancel: (order: Order) => void
+  onRetryShiprocket?: (order: Order) => void
+  retryingOrderId?: string | null
+}
+
+function shouldShowOrder(order: Order) {
+  // COD orders stay paymentStatus=pending but are real confirmed orders
+  if (order.paymentMethod === "cod") return order.orderStatus !== "failed"
+  if (order.paymentStatus === "paid" || !!order.paymentId) return true
+  if (order.orderStatus === "confirmed" || order.orderStatus === "processing" || order.orderStatus === "shipped") {
+    return true
+  }
+  return false
 }
 
 export function OrdersPanel({
-  orders, orderSearchTerm, setOrderSearchTerm, downloadInvoice, onRequestCancel,
+  orders,
+  orderSearchTerm,
+  setOrderSearchTerm,
+  downloadInvoice,
+  onRequestCancel,
+  onRetryShiprocket,
+  retryingOrderId,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -52,11 +70,11 @@ export function OrdersPanel({
                   {(() => {
                     const filteredOrders = orders
                       .filter((order) =>
-                        order.address.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
-                        order.address.phone.toLowerCase().includes(orderSearchTerm.toLowerCase())
+                        order.address?.name?.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
+                        order.address?.phone?.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
+                        order.orderId?.toLowerCase().includes(orderSearchTerm.toLowerCase())
                       )
-                      // Show only paid orders in order management
-                      .filter((order) => order.paymentStatus === "paid" || !!order.paymentId)
+                      .filter(shouldShowOrder)
 
                     return filteredOrders.length > 0 ? (
                       filteredOrders.map((order) => (
@@ -176,6 +194,53 @@ export function OrdersPanel({
                                 )}
                                 <div className="text-gray-600 text-xs sm:text-sm mt-1">
                                   Payment: <span className="font-medium">{order.paymentMethod.toUpperCase()}</span>
+                                  {order.paymentMethod === "cod" && order.paymentStatus === "pending" && (
+                                    <span className="ml-1 text-orange-600">(COD — collect on delivery)</span>
+                                  )}
+                                </div>
+                                <div className="text-gray-600 text-xs sm:text-sm mt-2 border-t border-gray-100 pt-2">
+                                  <div className="font-medium text-gray-700 mb-1">Shiprocket</div>
+                                  {order.isLocalShiprocket ? (
+                                    <div className="text-blue-700">Local NCR — Shiprocket skipped</div>
+                                  ) : (
+                                    <>
+                                      <div>
+                                        Status:{" "}
+                                        <span className="font-medium">
+                                          {order.shipmentStatus || "—"}
+                                        </span>
+                                      </div>
+                                      <div className="truncate">
+                                        SR ID: {order.shiprocketOrderId || "—"}
+                                      </div>
+                                      {order.awbNumber && (
+                                        <div>AWB: {order.awbNumber}</div>
+                                      )}
+                                      {order.shiprocketError && (
+                                        <div className="text-red-600 mt-1 break-words">
+                                          Error: {order.shiprocketError}
+                                        </div>
+                                      )}
+                                      {onRetryShiprocket &&
+                                        !order.isLocalShiprocket &&
+                                        (!order.shiprocketOrderId ||
+                                          order.shipmentStatus === "failed" ||
+                                          !!order.shiprocketError) &&
+                                        order.orderStatus !== "cancelled" && (
+                                          <Button
+                                            size="sm"
+                                            className="mt-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                            disabled={retryingOrderId === order.orderId}
+                                            onClick={() => onRetryShiprocket(order)}
+                                          >
+                                            <Truck className="h-3 w-3 mr-1" />
+                                            {retryingOrderId === order.orderId
+                                              ? "Retrying…"
+                                              : "Retry Shiprocket"}
+                                          </Button>
+                                        )}
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>

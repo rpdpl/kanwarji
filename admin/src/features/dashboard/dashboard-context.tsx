@@ -18,6 +18,7 @@ import {
   loadUsers,
   mapVariants,
   rejectCancellation,
+  retryShiprocketOrder as retryShiprocketOrderApi,
   toggleProductStatus as toggleProductStatusApi,
   toggleUserStatus as toggleUserStatusApi,
   updateProductForm,
@@ -96,6 +97,8 @@ type DashboardContextValue = {
   requestCancelOrder: (order: Order) => void
   closeCancelModal: () => void
   cancelOrder: () => Promise<void>
+  retryShiprocket: (order: Order) => Promise<void>
+  retryingOrderId: string | null
   handleLogout: () => void
 }
 
@@ -124,6 +127,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [selectedOrderForCancel, setSelectedOrderForCancel] = useState<Order | null>(null)
   const [cancelRemark, setCancelRemark] = useState("")
   const [isCancelling, setIsCancelling] = useState(false)
+  const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
   const router = useRouter()
 
   const [isAddingProduct, setIsAddingProduct] = useState(false)
@@ -583,6 +587,31 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setShowCancelModal(true)
   }
 
+  const retryShiprocket = async (order: Order) => {
+    try {
+      setRetryingOrderId(order.orderId)
+      setError("")
+      const data = await retryShiprocketOrderApi(order.orderId)
+      if (data.success) {
+        const refreshed = await loadOrders()
+        setOrders(refreshed)
+        alert(
+          data.shiprocketOrderId
+            ? `Shiprocket created: ${data.shiprocketOrderId}`
+            : data.message || "Shiprocket retry succeeded",
+        )
+      } else {
+        setError(data.message || data.error || "Shiprocket retry failed")
+        const refreshed = await loadOrders()
+        setOrders(refreshed)
+      }
+    } catch (err: any) {
+      setError(err?.message || "Shiprocket retry failed")
+    } finally {
+      setRetryingOrderId(null)
+    }
+  }
+
   const closeCancelModal = () => {
     setShowCancelModal(false)
     setCancelRemark("")
@@ -680,6 +709,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     requestCancelOrder,
     closeCancelModal,
     cancelOrder,
+    retryShiprocket,
+    retryingOrderId,
     handleLogout,
   }
 
