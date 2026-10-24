@@ -9,5 +9,7 @@ export default defineConfig({
   },
   preview: {
     historyApiFallback: true,
+    host: true,
+    allowedHosts: ["kanwarji.in", "www.kanwarji.in"],
   },
 });
