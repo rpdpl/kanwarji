@@ -11,6 +11,7 @@ import CartItemsCard from "./CartItemsCard";
 import AddressSection from "./AddressSection";
 import PaymentMethodCard from "./PaymentMethodCard";
 import OrderSummaryCard from "./OrderSummaryCard";
+import ShippingModeCard from "./ShippingModeCard";
 import PlaceOrderBar from "./PlaceOrderBar";
 import LocalDeliveryModal from "./LocalDeliveryModal";
 import AddressFormModal from "./AddressFormModal";
@@ -23,6 +24,7 @@ const CheckoutPage = () => {
   const {
     cart,
     addresses,
+    setAddresses,
     selectedAddressId,
     setSelectedAddressId,
     loading,
@@ -33,20 +35,13 @@ const CheckoutPage = () => {
     cart,
     addresses,
     selectedAddressId,
+    setAddresses,
   });
 
   const addressUi = useCheckoutAddresses({
     loadData,
     selectedAddressId,
     setSelectedAddressId,
-    setIsLocalDelivery: shipping.setIsLocalDelivery,
-    setShowLocalDeliveryModal: shipping.setShowLocalDeliveryModal,
-    warnedPincode: shipping.warnedPincode,
-    setWarnedPincode: shipping.setWarnedPincode,
-    setShippingCharge: shipping.setShippingCharge,
-    setShippingLoading: shipping.setShippingLoading,
-    setShippingError: shipping.setShippingError,
-    setExpectedEtaText: shipping.setExpectedEtaText,
   });
 
   const taxAmount = computeTaxAmount(cart.cartItems || []);
@@ -65,6 +60,10 @@ const CheckoutPage = () => {
       taxAmount,
       totalAmount,
       specialRequest,
+      shippingMode: shipping.shippingMode,
+      deliveryLat: shipping.deliveryLat,
+      deliveryLong: shipping.deliveryLong,
+      selectedCourier: shipping.selectedCourier,
     });
 
   if (loading) {
@@ -118,6 +117,17 @@ const CheckoutPage = () => {
           handleDeleteAddress={addressUi.handleDeleteAddress}
         />
 
+        <ShippingModeCard
+          quickEligible={shipping.quickEligible}
+          shippingMode={shipping.shippingMode}
+          onSelectMode={shipping.selectShippingMode}
+          gpsLoading={shipping.gpsLoading}
+          shippingLoading={shipping.shippingLoading}
+          deliveryLat={shipping.deliveryLat}
+          deliveryLong={shipping.deliveryLong}
+          selectedCourier={shipping.selectedCourier}
+        />
+
         <PaymentMethodCard />
 
         <OrderSummaryCard
@@ -152,6 +162,7 @@ const CheckoutPage = () => {
         addresses={addresses}
         selectedAddressId={selectedAddressId}
         onClose={() => shipping.setShowLocalDeliveryModal(false)}
+        onChooseQuick={() => shipping.selectShippingMode("quick")}
       />
 
       <AddressFormModal

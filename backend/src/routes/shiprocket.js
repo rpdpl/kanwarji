@@ -20,8 +20,8 @@ const {
 const { authenticateToken, requireAdmin } = require("../middleware/auth");
 const { upload } = require("../middleware/upload");
 const { generateOTP, generateOrderId, calculateBilledWeight } = require("../utils/ids");
-const { shouldUseInstamojoForPincode, getShippingEstimate } = require("../utils/pincode");
 const { generateInvoicePDF } = require("../utils/invoice");
+const { createShipmentForOrder } = require("../utils/createShipmentForOrder");
 const env = require("../config/env");
 const email = require("../../services/email");
 const {
@@ -106,33 +106,72 @@ app.post("/api/shiprocket/create-order", async (req, res) => {
     }
 });
 
-// Get Shipping Rates
+// Get Shipping Rates (standard or Quick / hyperlocal)
 app.post("/api/shiprocket/shipping-rates", authenticateToken, async (req, res) => {
     try {
-        const { pickupLocationId, deliveryPincode, weight, orderValue } = req.body;
+        const {
+            pickupLocationId,
+            deliveryPincode,
+            weight,
+            orderValue,
+            mode,
+            lat,
+            long,
+            cod,
+        } = req.body;
 
-        if (!pickupLocationId || !deliveryPincode) {
+        if (!deliveryPincode) {
             return res.status(400).json({
                 success: false,
-                message: "Pickup location ID and delivery pincode are required",
+                message: "Delivery pincode is required",
             });
         }
 
+        const shippingMode = mode === "quick" ? "quick" : "standard";
+        const pickup =
+            pickupLocationId ||
+            shiprocket.getPickupPostcode?.() ||
+            "110006";
+
+        if (shippingMode === "quick") {
+            if (lat == null || long == null) {
+                return res.status(400).json({
+                    success: false,
+                    message: "lat and long are required for Quick delivery rates",
+                });
+            }
+            if (!shiprocket.getPickupCoords?.()) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Shop pickup coordinates are not configured (SHIPROCKET_PICKUP_LAT/LONG)",
+                });
+            }
+        }
+
         const result = await shiprocket.getShippingRate(
-            pickupLocationId,
+            pickup,
             deliveryPincode,
             weight || 1,
-            orderValue || 0
+            orderValue || 0,
+            {
+                mode: shippingMode,
+                lat: Number(lat),
+                long: Number(long),
+                cod: cod === 0 || cod === false ? 0 : 1,
+            }
         );
 
         if (result.success) {
             res.json({
                 success: true,
+                mode: shippingMode,
                 data: result.data,
             });
         } else {
             res.status(400).json({
                 success: false,
+                mode: shippingMode,
                 message: "Failed to fetch shipping rates",
                 error: result.error,
             });
@@ -348,121 +387,38 @@ app.post("/api/shiprocket/retry-order", authenticateToken, requireAdmin, async (
 
         console.log(`[SHIPROCKET RETRY] Attempting to retry order ${orderId}`);
 
-        // Helper function for safe values
-        const safeValue = (value, fallback) => {
-            if (value === null || value === undefined || String(value).trim() === '') {
-                return fallback;
-            }
-            return value;
-        };
-
-        // Split name into first and last name
-        const fullName = safeValue(order.address?.name, "Customer");
-        const nameParts = fullName.trim().split(' ');
-        const firstName = nameParts[0] || "Customer";
-        const lastName = nameParts.slice(1).join(' ') || "Name";
-
-        // Prepare payload matching the working API format
-        const uniqueSuffix = Date.now().toString().slice(-4) + Math.floor(Math.random() * 100);
-        const shiprocketOrderId = `${order.orderId}-${uniqueSuffix}`;
-
-        const apiPayload = {
-            orderId: shiprocketOrderId,
-            orderData: {
-                billingCustomerName: firstName,
-                billingLastName: lastName,
-                billingEmail: safeValue(user.email, "customer@example.com"),
-                billingPhone: safeValue(order.address?.phone, "9999999999"),
-                billingAddress: safeValue(order.address?.address, "Address not provided"),
-                billingCity: safeValue(order.address?.city, "Mumbai"),
-                billingPincode: safeValue(order.address?.pincode, "400001"),
-                billingState: safeValue(order.address?.state, "Maharashtra"),
-                billingCountry: "India",
-                shippingIsBilling: true,
-                paymentMethod: "Prepaid",
-                subtotal: Number(order.subtotal) || 100,
-                shippingCharges: Number(order.shiprocketFee) || 0,
-                transactionCharges: Number(order.convenienceFee || 0) * 1.18,
-                weight: Number(order.weight) || 0.5,
-                length: 10,
-                breadth: 10,
-                height: 10,
-                items: (order.items || []).map(item => ({
-                    name: safeValue(item.name, "Product"),
-                    sku: safeValue(item.itemId || item.name, "SKU-001"),
-                    quantity: Number(item.quantity) || 1,
-                    price: Number(item.price) || 0,
-                    discount: Number(item.discount) || 0,
-                    tax: Number(item.tax) || 0
-                }))
-            }
-        };
-
-        // Ensure at least one item exists
-        if (apiPayload.orderData.items.length === 0) {
-            apiPayload.orderData.items.push({
-                name: "Order Item",
-                sku: "ITEM-001",
-                quantity: 1,
-                price: Number(order.subtotal) || 100,
-                discount: 0,
-                tax: 0
-            });
-        }
-
-        // Call the working API endpoint
         try {
-            const apiResponse = await axios.post(
-                `${SERVER_BASE_URL}/api/shiprocket/create-order`,
-                apiPayload,
-                {
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 30000
-                }
-            );
+            const result = await createShipmentForOrder(order, {
+                email: user.email,
+                forceOrderIdSuffix: true,
+            });
 
-            if (apiResponse.data && apiResponse.data.success) {
-                order.shiprocketOrderId = apiResponse.data.shiprocketOrderId || shiprocketOrderId;
-                order.shipmentStatus = "created";
-                order.shiprocketError = null;
-                await order.save();
-
+            if (result.success) {
                 console.log(`[SHIPROCKET RETRY] Success for order ${orderId}`);
-
-                res.json({
+                return res.json({
                     success: true,
                     message: "Shiprocket order created successfully",
-                    shiprocketOrderId: apiResponse.data.shiprocketOrderId,
-                    data: apiResponse.data,
-                });
-            } else {
-                const errorMsg = apiResponse.data?.error || apiResponse.data?.message || "Unknown error";
-                order.shiprocketError = errorMsg;
-                order.shipmentStatus = "failed";
-                await order.save();
-
-                console.error(`[SHIPROCKET RETRY] Failed for order ${orderId}: ${errorMsg}`);
-
-                res.status(400).json({
-                    success: false,
-                    message: "Failed to create Shiprocket order",
-                    error: errorMsg,
+                    shiprocketOrderId: result.shiprocketOrderId,
+                    shippingMode: result.shippingMode,
+                    shippingFallbackUsed: !!result.shippingFallbackUsed,
+                    awbNumber: result.awbNumber || null,
                 });
             }
-        } catch (apiError) {
-            const errorMsg = apiError.response?.data?.error || apiError.response?.data?.message || apiError.message;
+
+            console.error(`[SHIPROCKET RETRY] Failed for order ${orderId}: ${result.error}`);
+            return res.status(400).json({
+                success: false,
+                message: result.error || "Shiprocket create failed",
+                shippingFallbackUsed: !!result.shippingFallbackUsed,
+            });
+        } catch (retryErr) {
+            const errorMsg = retryErr.message || "Retry failed";
             order.shiprocketError = errorMsg;
             order.shipmentStatus = "failed";
             await order.save();
-
-            console.error(`[SHIPROCKET RETRY] API call failed for order ${orderId}: ${errorMsg}`);
-
-            res.status(400).json({
+            return res.status(500).json({
                 success: false,
-                message: "Failed to create Shiprocket order",
-                error: errorMsg,
+                message: errorMsg,
             });
         }
     } catch (error) {

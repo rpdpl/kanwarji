@@ -29,14 +29,27 @@ export const createShiprocketOrder = async (orderId, orderData) => {
  * @param {number} orderValue - Order value
  * @returns {Promise<Object>} - Shipping rates
  */
-export const getShippingRates = async (pickupLocationId, deliveryPincode, weight = 1, orderValue = 0) => {
+export const getShippingRates = async (
+  pickupLocationId,
+  deliveryPincode,
+  weight = 1,
+  orderValue = 0,
+  options = {}
+) => {
   try {
-    const response = await apiPost('/api/shiprocket/shipping-rates', {
+    const mode = options.mode === "quick" ? "quick" : "standard";
+    const body = {
       pickupLocationId,
       deliveryPincode,
       weight,
-      orderValue
-    });
+      orderValue,
+      mode,
+    };
+    if (mode === "quick") {
+      body.lat = options.lat;
+      body.long = options.long;
+    }
+    const response = await apiPost('/api/shiprocket/shipping-rates', body);
     const data = response.data;
     if (data && data.data && data.data.available_courier_companies && !data.data.available_courier_companies_vg) {
       data.data.available_courier_companies_vg = data.data.available_courier_companies;

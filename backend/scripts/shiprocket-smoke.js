@@ -22,6 +22,11 @@ async function main() {
     "PICKUP:",
     process.env.SHIPROCKET_PICKUP_LOCATION || "Primary"
   );
+  console.log(
+    "PICKUP_LAT/LONG:",
+    process.env.SHIPROCKET_PICKUP_LAT || "(missing)",
+    process.env.SHIPROCKET_PICKUP_LONG || "(missing)"
+  );
 
   // 1) Auth
   console.log("\n[1] Auth login…");
@@ -51,6 +56,29 @@ async function main() {
       couriers[0].courier_name || couriers[0].courier_company_id,
       "₹" + (couriers[0].rate ?? couriers[0].freight_charge ?? "?")
     );
+  }
+
+  // 2b) Quick / hyperlocal rate (nearby Chandni Chowk coords)
+  console.log("\n[2b] Quick hyperlocal rate (shop → nearby)…");
+  const quickRate = await shiprocket.getShippingRate(
+    "110006",
+    "110006",
+    0.5,
+    500,
+    {
+      mode: "quick",
+      lat: 28.6565,
+      long: 77.231,
+    }
+  );
+  if (!quickRate.success) {
+    console.warn("WARN: Quick rate failed (account may need Quick enabled):", quickRate.error);
+  } else {
+    const qCouriers =
+      quickRate.data?.data?.available_courier_companies ||
+      quickRate.data?.available_courier_companies ||
+      [];
+    console.log("OK: Quick couriers available:", qCouriers.length);
   }
 
   // 3) Demo create order (then cancel)

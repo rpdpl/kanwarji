@@ -20,11 +20,14 @@ describe("services/shiprocket (mocked axios)", () => {
     delete process.env.SHIPROCKET_PASSWORD;
     delete process.env.SHIPROCKET_CHANNEL_ID;
     delete process.env.SHIPROCKET_PICKUP_LOCATION;
+    delete process.env.SHIPROCKET_PICKUP_LAT;
+    delete process.env.SHIPROCKET_PICKUP_LONG;
   });
 
   afterEach(() => {
     console.warn.mockRestore?.();
     console.error.mockRestore?.();
+    console.log.mockRestore?.();
   });
 
   describe("getShiprocketToken", () => {
@@ -86,6 +89,66 @@ describe("services/shiprocket (mocked axios)", () => {
         `${SHIPROCKET_BASE}/courier/serviceability/?pickup_postcode=110006&delivery_postcode=400001&weight=0.5&cod=1`,
         { headers: { Authorization: "Bearer sr-token" } }
       );
+    });
+
+    it("calls hyperlocal serviceability with lat/long flags", async () => {
+      process.env.SHIPROCKET_EMAIL = "shop@example.com";
+      process.env.SHIPROCKET_PASSWORD = "secret";
+      process.env.SHIPROCKET_PICKUP_LAT = "28.656090";
+      process.env.SHIPROCKET_PICKUP_LONG = "77.230721";
+      axios.post.mockResolvedValueOnce({ data: { token: "sr-token" } });
+      axios.get.mockResolvedValueOnce({
+        data: {
+          status: true,
+          data: [
+            {
+              courier_name: "Shiprocket Quick",
+              rates: 128,
+              etd_hours: 1,
+            },
+          ],
+        },
+      });
+
+      const shiprocket = loadShiprocket();
+      const result = await shiprocket.getShippingRate(
+        "110006",
+        "110001",
+        0.5,
+        500,
+        { mode: "quick", lat: 28.65, long: 77.23 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe("quick");
+      const calledUrl = axios.get.mock.calls[0][0];
+      expect(calledUrl).toContain("is_new_hyperlocal=1");
+      expect(calledUrl).toContain("cod=0");
+      expect(calledUrl).toContain("lat_from=28.65609");
+      expect(calledUrl).toContain("long_from=77.230721");
+      expect(calledUrl).toContain("lat_to=28.65");
+      expect(calledUrl).toContain("long_to=77.23");
+      expect(
+        result.data?.available_courier_companies?.[0]?.rate ||
+          result.data?.data?.available_courier_companies?.[0]?.rate
+      ).toBe(128);
+    });
+
+    it("rejects quick rates without shop coords", async () => {
+      process.env.SHIPROCKET_EMAIL = "shop@example.com";
+      process.env.SHIPROCKET_PASSWORD = "secret";
+      axios.post.mockResolvedValueOnce({ data: { token: "sr-token" } });
+
+      const shiprocket = loadShiprocket();
+      const result = await shiprocket.getShippingRate(
+        "110006",
+        "110001",
+        0.5,
+        0,
+        { mode: "quick", lat: 28.65, long: 77.23 }
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/PICKUP_LAT|PICKUP_LONG/i);
     });
   });
 
@@ -185,5 +248,52 @@ describe("services/shiprocket (mocked axios)", () => {
       expect(call.data.channel_id).toBeUndefined();
     });
 
+    it("includes hyperlocal fields when shippingMode is quick", async () => {
+      process.env.SHIPROCKET_EMAIL = "shop@example.com";
+      process.env.SHIPROCKET_PASSWORD = "secret";
+      axios.post.mockResolvedValueOnce({ data: { token: "sr-token" } });
+      axios.mockResolvedValueOnce({
+        data: { order_id: 55, shipment_id: 66 },
+      });
+
+      const shiprocket = loadShiprocket();
+      const result = await shiprocket.createShiprocketOrder({
+        orderId: "ORD-Q",
+        shippingMode: "quick",
+        deliveryLat: 28.65,
+        deliveryLong: 77.23,
+        items: [{ name: "Laddu", quantity: 1, price: 50 }],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.shipmentId).toBe(66);
+      const call = axios.mock.calls[0][0];
+      expect(call.data.is_new_hyperlocal).toBe(1);
+      expect(call.data.billing_lat).toBe(28.65);
+      expect(call.data.billing_long).toBe(77.23);
+    });
+  });
+
+  describe("assignAwb", () => {
+    it("posts courier assign payload", async () => {
+      process.env.SHIPROCKET_EMAIL = "shop@example.com";
+      process.env.SHIPROCKET_PASSWORD = "secret";
+      axios.post.mockResolvedValueOnce({ data: { token: "sr-token" } });
+      axios.mockResolvedValueOnce({
+        data: { awb_code: "AWB123" },
+      });
+
+      const shiprocket = loadShiprocket();
+      const result = await shiprocket.assignAwb(66, 12);
+      expect(result.success).toBe(true);
+      expect(result.awbNumber).toBe("AWB123");
+      expect(axios).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: "post",
+          url: `${SHIPROCKET_BASE}/courier/assign/awb`,
+          data: { shipment_id: 66, courier_id: 12 },
+        })
+      );
+    });
   });
 });

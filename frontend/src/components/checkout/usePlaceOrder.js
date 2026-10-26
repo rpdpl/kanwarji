@@ -14,6 +14,10 @@ export default function usePlaceOrder({
   taxAmount,
   totalAmount,
   specialRequest,
+  shippingMode = "standard",
+  deliveryLat = null,
+  deliveryLong = null,
+  selectedCourier = null,
 }) {
   const navigate = useNavigate();
   const [placingOrder, setPlacingOrder] = useState(false);
@@ -76,6 +80,14 @@ export default function usePlaceOrder({
         return;
       }
 
+      if (shippingMode === "quick") {
+        if (!Number.isFinite(Number(deliveryLat)) || !Number.isFinite(Number(deliveryLong))) {
+          toast.error("Quick delivery needs your location. Please enable GPS and select Quick again.");
+          setPlacingOrder(false);
+          return;
+        }
+      }
+
       const orderItems = buildOrderItems(cart.cartItems || []);
       const orderData = {
         items: orderItems,
@@ -95,6 +107,15 @@ export default function usePlaceOrder({
         totalAmount,
         specialRequests: specialRequest,
         billedWeight: weight,
+        shippingMode: shippingMode === "quick" ? "quick" : "standard",
+        requestedShippingMode: shippingMode === "quick" ? "quick" : "standard",
+        deliveryLat: deliveryLat != null ? Number(deliveryLat) : undefined,
+        deliveryLong: deliveryLong != null ? Number(deliveryLong) : undefined,
+        courierCompanyId:
+          selectedCourier?.courier_company_id ??
+          selectedCourier?.id ??
+          undefined,
+        courierName: selectedCourier?.courier_name || undefined,
       };
 
       console.log(

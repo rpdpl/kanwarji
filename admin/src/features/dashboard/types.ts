@@ -75,6 +75,13 @@ export interface Order {
   awbNumber?: string
   shiprocketFee?: number
   isLocalShiprocket?: boolean
+  shippingMode?: "quick" | "standard"
+  requestedShippingMode?: "quick" | "standard"
+  shippingFallbackUsed?: boolean
+  deliveryLat?: number
+  deliveryLong?: number
+  courierCompanyId?: string
+  courierName?: string
 }
 
 export interface CancellationRequest {

@@ -20,8 +20,9 @@ const {
 const { authenticateToken, requireAdmin } = require("../middleware/auth");
 const { upload } = require("../middleware/upload");
 const { generateOTP, generateOrderId, calculateBilledWeight } = require("../utils/ids");
-const { shouldUseInstamojoForPincode, getShippingEstimate } = require("../utils/pincode");
+const { getShippingEstimate } = require("../utils/pincode");
 const { generateInvoicePDF } = require("../utils/invoice");
+const { createShipmentForOrder } = require("../utils/createShipmentForOrder");
 const env = require("../config/env");
 const email = require("../../services/email");
 const {
@@ -70,6 +71,12 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
             totalAmount,
             weight,
             specialRequests,
+            shippingMode,
+            requestedShippingMode,
+            deliveryLat,
+            deliveryLong,
+            courierCompanyId,
+            courierName,
         } = req.body;
 
         // Validate required fields
@@ -122,6 +129,11 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
             discount: Number(it.discount || 0),
         }));
 
+        const modeRaw = requestedShippingMode || shippingMode || "standard";
+        const mode = modeRaw === "quick" ? "quick" : "standard";
+        const latNum = deliveryLat != null ? Number(deliveryLat) : undefined;
+        const longNum = deliveryLong != null ? Number(deliveryLong) : undefined;
+
         const order = new Order({
             userId: req.user.id,
             orderId,
@@ -140,16 +152,22 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
             specialRequests: specialRequests || "",
             orderStatus: "confirmed",
             estimatedShiprocket,
+            requestedShippingMode: mode,
+            shippingMode: mode,
+            shippingFallbackUsed: false,
+            deliveryLat: Number.isFinite(latNum) ? latNum : undefined,
+            deliveryLong: Number.isFinite(longNum) ? longNum : undefined,
+            courierCompanyId: courierCompanyId != null ? String(courierCompanyId) : undefined,
+            courierName: courierName || undefined,
+            isLocalShiprocket: false,
         });
 
-
-
-        if (paymentMethod === "cod") {
+        // Prefer client-calculated Shiprocket / Quick fee; only fall back to estimate if missing
+        if (paymentMethod === "cod" && (shiprocketFee == null || shiprocketFee === "")) {
             const shippingEstimate = await getShippingEstimate(order.address.pincode, order.weight, true);
-            order.shiprocketFee = shippingEstimate; // Override with real estimate
-            order.totalAmount = subtotal + taxAmount + shippingEstimate; // Recalculate total
+            order.shiprocketFee = shippingEstimate;
+            order.totalAmount = subtotal + taxAmount + shippingEstimate;
         }
-
 
         await order.save();
 
@@ -181,64 +199,14 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
 
 
 
-        // ✅ 1️⃣ Create Shipment in Shiprocket right here
-        // Only create shipment for non-local deliveries (COD is confirmed immediately)
-        const isLocalDelivery = shouldUseInstamojoForPincode(order.address.pincode);
-        if (isLocalDelivery) {
-            console.log(`ℹ️ [SKIP SHIPROCKET] Pincode ${order.address.pincode} is in LOCAL NCR region. Shiprocket order creation skipped.`);
-        }
-
-        if (!isLocalDelivery && (order.paymentMethod === "cod" || order.paymentStatus === "paid")) {
-            console.log(`Creating Shiprocket shipment for order ${order.orderId}, pincode: ${order.address.pincode}`);
+        // Create Shiprocket shipment (Quick Hyperlocal or Standard; Quick may fall back)
+        if (order.paymentMethod === "cod" || order.paymentStatus === "paid") {
+            console.log(
+                `Creating Shiprocket shipment for order ${order.orderId}, mode=${order.requestedShippingMode}, pincode=${order.address.pincode}`
+            );
             try {
-                // Ensure unique SKUs per order to avoid 'SKU cannot be repeated' from Shiprocket
-                const skuCountMap = new Map();
-                const makeUniqueSku = (base) => {
-                    const key = String(base || "SKU-ITEM");
-                    const count = (skuCountMap.get(key) || 0) + 1;
-                    skuCountMap.set(key, count);
-                    return count === 1 ? key : `${key}-${count}`;
-                };
-
-                const shiprocketResult = await shiprocket.createShiprocketOrder({
-                    orderId: order.orderId,
-                    billingCustomerName: order.address.name,
-                    billingEmail: req.user.email,
-                    billingPhone: order.address.phone,
-                    billingAddress: order.address.address,
-                    billingCity: order.address.city,
-                    billingPincode: order.address.pincode,
-                    billingState: order.address.state,
-                    paymentMethod: order.paymentMethod === "cod" ? "COD" : "Prepaid",
-                    subtotal: order.subtotal,
-                    weight: order.weight,
-                    shippingCharges: order.shiprocketFee,
-                    transactionCharges: (Number(order.convenienceFee || 0) * 1.18),
-                    items: order.items.map(item => ({
-                        name: item.name,
-                        sku: makeUniqueSku(item.itemId || item.name),
-                        quantity: item.quantity,
-                        price: item.price,
-                        tax: item.tax,
-                        discount: item.discount
-                    }))
-                });
-
-                if (shiprocketResult.success) {
-                    order.shiprocketOrderId = shiprocketResult.shiprocketOrderId;
-                    order.shipmentStatus = "created";
-                    order.shiprocketError = null;
-                    await order.save();
-                    console.log(`Shiprocket order created: ${shiprocketResult.shiprocketOrderId}`);
-                } else {
-                    order.shiprocketError =
-                        shiprocketResult.error ||
-                        (shiprocket.getLastAuthError && shiprocket.getLastAuthError()) ||
-                        "Shiprocket create failed";
-                    order.shipmentStatus = "failed";
-                    await order.save();
-                    console.error("Shiprocket creation failed:", order.shiprocketError);
-                }
+                const user = await User.findById(req.user.id);
+                await createShipmentForOrder(order, { email: user?.email || req.user.email });
             } catch (shipmentError) {
                 console.error(`[ORDER ${order.orderId}] Shiprocket API Error:`, shipmentError.message);
                 try {
@@ -249,12 +217,6 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
                     /* ignore */
                 }
             }
-        } else if (shouldUseInstamojoForPincode(order.address.pincode)) {
-            // Local shiprocket pincode
-            order.isLocalShiprocket = true;
-            order.shipmentStatus = "na";
-            await order.save();
-            console.log(`[ORDER ${order.orderId}] Local delivery (Instamojo region) - Shiprocket not required`);
         }
 
 
@@ -402,6 +364,11 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
                 shiprocketOrderId: order.shiprocketOrderId || null,
                 shiprocketError: order.shiprocketError || null,
                 isLocalShiprocket: !!order.isLocalShiprocket,
+                shippingMode: order.shippingMode,
+                requestedShippingMode: order.requestedShippingMode,
+                shippingFallbackUsed: !!order.shippingFallbackUsed,
+                deliveryLat: order.deliveryLat,
+                deliveryLong: order.deliveryLong,
                 estimatedShiprocket: order.estimatedShiprocket,
                 specialRequests: order.specialRequests, // Include in response
                 createdAt: order.createdAt,

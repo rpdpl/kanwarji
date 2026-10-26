@@ -23,20 +23,41 @@ export const createShiprocketOrder = async (orderId, orderData) => {
 
 /**
  * Get shipping rates for a delivery
- * @param {string} pickupLocationId - Pickup location ID
+ * @param {string} pickupLocationId - Pickup location ID / postcode
  * @param {string} deliveryPincode - Delivery pincode
  * @param {number} weight - Weight in kg
  * @param {number} orderValue - Order value
+ * @param {{ mode?: 'quick'|'standard', lat?: number, long?: number, cod?: number }} [options]
  * @returns {Promise<Object>} - Shipping rates
  */
-export const getShippingRates = async (pickupLocationId, deliveryPincode, weight = 1, orderValue = 0) => {
+export const getShippingRates = async (
+  pickupLocationId,
+  deliveryPincode,
+  weight = 1,
+  orderValue = 0,
+  options = {}
+) => {
   try {
-    const response = await apiPost('/api/shiprocket/shipping-rates', {
+    const mode = options.mode === "quick" ? "quick" : "standard";
+    const body = {
       pickupLocationId,
       deliveryPincode,
       weight,
-      orderValue
-    });
+      orderValue,
+      mode,
+    };
+    if (mode === "quick") {
+      body.lat = options.lat;
+      body.long = options.long;
+    }
+    // Quick is prepaid-serviceable on Shiprocket; default COD off for quick
+    if (mode === "quick") {
+      body.cod = options.cod === 1 || options.cod === true ? 1 : 0;
+    } else if (options.cod === 0 || options.cod === false) {
+      body.cod = 0;
+    }
+
+    const response = await apiPost('/api/shiprocket/shipping-rates', body);
     const data = response.data || {};
     // Build a unified list of couriers from various possible locations in the payload
     const collect = [];
@@ -49,6 +70,10 @@ export const getShippingRates = async (pickupLocationId, deliveryPincode, weight
       pushAll(data.data.available_courier_companies);
     }
     pushAll(data.available_courier_companies);
+    // nested Shiprocket shape: { success, data: { data: { available_courier_companies } } }
+    if (data.data?.data) {
+      pushAll(data.data.data.available_courier_companies);
+    }
     // De-duplicate by courier_company_id + id
     const seen = new Set();
     const unified = collect.filter((c) => {
@@ -57,13 +82,18 @@ export const getShippingRates = async (pickupLocationId, deliveryPincode, weight
       seen.add(key);
       return true;
     });
-    // Safety filter: allow only Air/Express (exclude any surface)
-    const airOnly = unified.filter((c) => (Number(c?.mode) === 1) || (c?.is_surface === false));
-    // Expose normalized list for consumers
-    data.available_courier_companies_vg = airOnly;
-    if (data.data) {
-      data.data.available_courier_companies_vg = airOnly;
+
+    let list = unified;
+    if (mode === "standard") {
+      // Safety filter: allow only Air/Express (exclude any surface)
+      list = unified.filter((c) => (Number(c?.mode) === 1) || (c?.is_surface === false));
     }
+    // Expose normalized list for consumers
+    data.available_courier_companies_vg = list;
+    if (data.data) {
+      data.data.available_courier_companies_vg = list;
+    }
+    data.mode = data.mode || mode;
     return data;
   } catch (error) {
     console.error('Error fetching shipping rates:', error);
@@ -147,8 +177,8 @@ export const getTrackingUrl = (awbNumber) => {
 // Constants for Shiprocket integration
 export const SHIPROCKET_PICKUP_LOCATION_ID = "110006";
 
-// Free shipping pincodes (same as server-side list)
-export const FREE_SHIPPING_PINCODES = new Set([
+// Delhi/NCR pincodes eligible for Quick (Hyperlocal) delivery option
+export const QUICK_ELIGIBLE_PINCODES = new Set([
   // Delhi
   "110001", "110002", "110003", "110004", "110005", "110006", "110007", "110008", "110009", "110010",
   "110011", "110012", "110013", "110014", "110015", "110016", "110017", "110018", "110019", "110020",
@@ -173,6 +203,9 @@ export const FREE_SHIPPING_PINCODES = new Set([
   // Meerut
   "123003", "123413", "123414", "123502", "123504", "123505", "123506",
 ]);
+
+/** @deprecated use QUICK_ELIGIBLE_PINCODES — kept for older imports */
+export const FREE_SHIPPING_PINCODES = QUICK_ELIGIBLE_PINCODES;
 
 /**
  * Calculate billed weight for shipping

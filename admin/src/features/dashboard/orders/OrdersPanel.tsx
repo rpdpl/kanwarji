@@ -200,10 +200,43 @@ export function OrdersPanel({
                                 </div>
                                 <div className="text-gray-600 text-xs sm:text-sm mt-2 border-t border-gray-100 pt-2">
                                   <div className="font-medium text-gray-700 mb-1">Shiprocket</div>
-                                  {order.isLocalShiprocket ? (
-                                    <div className="text-blue-700">Local NCR — Shiprocket skipped</div>
+                                  {order.isLocalShiprocket && !order.shippingMode ? (
+                                    <div className="text-blue-700">Local NCR (skipped) — legacy</div>
                                   ) : (
                                     <>
+                                      <div>
+                                        Mode:{" "}
+                                        <span className="font-medium capitalize">
+                                          {order.shippingMode === "quick"
+                                            ? "Quick"
+                                            : order.shippingMode === "standard"
+                                              ? "Standard"
+                                              : order.requestedShippingMode === "quick"
+                                                ? "Quick (requested)"
+                                                : "Standard"}
+                                        </span>
+                                        {order.requestedShippingMode &&
+                                          order.requestedShippingMode !== order.shippingMode && (
+                                            <span className="text-gray-500">
+                                              {" "}
+                                              · requested {order.requestedShippingMode}
+                                            </span>
+                                          )}
+                                      </div>
+                                      {order.shippingFallbackUsed && (
+                                        <div className="text-amber-700 font-medium">
+                                          Fallback used: Quick → Standard
+                                        </div>
+                                      )}
+                                      {order.deliveryLat != null && order.deliveryLong != null && (
+                                        <div className="truncate text-gray-500">
+                                          GPS: {Number(order.deliveryLat).toFixed(5)},{" "}
+                                          {Number(order.deliveryLong).toFixed(5)}
+                                        </div>
+                                      )}
+                                      {order.courierName && (
+                                        <div className="truncate">Courier: {order.courierName}</div>
+                                      )}
                                       <div>
                                         Status:{" "}
                                         <span className="font-medium">
@@ -225,7 +258,8 @@ export function OrdersPanel({
                                         !order.isLocalShiprocket &&
                                         (!order.shiprocketOrderId ||
                                           order.shipmentStatus === "failed" ||
-                                          !!order.shiprocketError) &&
+                                          !!order.shiprocketError ||
+                                          order.shippingFallbackUsed) &&
                                         order.orderStatus !== "cancelled" && (
                                           <Button
                                             size="sm"

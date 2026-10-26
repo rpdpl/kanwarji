@@ -6,6 +6,7 @@ export default function LocalDeliveryModal({
   addresses,
   selectedAddressId,
   onClose,
+  onChooseQuick,
 }) {
   if (!show) return null;
 
@@ -14,10 +15,9 @@ export default function LocalDeliveryModal({
     if (addr) {
       const pinRaw = (addr.pincode || "").toString().trim();
       const pin = pinRaw.replace(/\D/g, "").slice(0, 6);
-      localStorage.setItem("warnedPincode", pin);
+      localStorage.setItem("warnedQuickPin", pin);
     }
     onClose();
-    window.location.reload();
   };
 
   return (
@@ -31,29 +31,41 @@ export default function LocalDeliveryModal({
           <FaTimes className="text-gray-500" />
         </button>
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 text-xl">
-            ⚠️
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600 text-lg font-bold">
+            Q
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-1">
-              Local Delivery Charges Notice
+              Quick delivery available
             </h3>
             <p className="text-sm text-gray-700">
-              Delivery charges are payable at the time of delivery. This fee is
-              not included in the total shown here.
+              Your address is in Delhi / NCR. Choose{" "}
+              <span className="font-semibold">Quick delivery</span> for
+              same-city courier (we&apos;ll use your phone GPS), or keep{" "}
+              <span className="font-semibold">Standard shipping</span>. Quick
+              rates come from Shiprocket and are included in your order total.
             </p>
           </div>
         </div>
-        <div className="mt-5 flex justify-end">
+        <div className="mt-5 flex flex-col sm:flex-row justify-end gap-2">
           <button
             onClick={handleClose}
+            className="px-5 py-2 rounded-xl font-semibold border border-gray-300 text-gray-700"
+          >
+            Use Standard
+          </button>
+          <button
+            onClick={() => {
+              handleClose();
+              if (typeof onChooseQuick === "function") onChooseQuick();
+            }}
             className="px-5 py-2 rounded-xl text-white font-semibold border-2 shadow-soft"
             style={{
               backgroundColor: "rgb(238, 34, 37)",
               borderColor: "rgb(200, 20, 22)",
             }}
           >
-            I Understand
+            Choose Quick
           </button>
         </div>
       </div>

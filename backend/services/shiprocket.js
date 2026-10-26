@@ -1,6 +1,7 @@
 const axios = require("axios");
 
 const SHIPROCKET_BASE = "https://apiv2.shiprocket.in/v1/external";
+const DEFAULT_PICKUP_POSTCODE = "110006";
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -12,6 +13,19 @@ function getPickupLocation(orderData = {}) {
     process.env.SHIPROCKET_PICKUP_LOCATION ||
     "Primary"
   );
+}
+
+function getPickupPostcode() {
+  return process.env.SHIPROCKET_PICKUP_POSTCODE || DEFAULT_PICKUP_POSTCODE;
+}
+
+function getPickupCoords() {
+  const lat = Number(process.env.SHIPROCKET_PICKUP_LAT);
+  const long = Number(process.env.SHIPROCKET_PICKUP_LONG);
+  if (!Number.isFinite(lat) || !Number.isFinite(long)) {
+    return null;
+  }
+  return { lat, long };
 }
 
 function clearTokenCache() {
@@ -115,6 +129,18 @@ function normalizeItems(orderData) {
   }));
 }
 
+function extractIdsFromCreateResponse(data = {}) {
+  const shiprocketOrderId =
+    data.order_id ||
+    data?.data?.order_id ||
+    null;
+  const shipmentId =
+    data.shipment_id ||
+    data?.data?.shipment_id ||
+    null;
+  return { shiprocketOrderId, shipmentId };
+}
+
 async function createShiprocketOrder(orderData = {}) {
   const orderItems = normalizeItems(orderData);
   if (!orderItems.length) {
@@ -128,6 +154,18 @@ async function createShiprocketOrder(orderData = {}) {
   const nameParts = String(billingName).trim().split(/\s+/);
   const firstName = nameParts[0] || "Customer";
   const lastName = nameParts.slice(1).join(" ") || firstName;
+  const isQuick =
+    orderData.shippingMode === "quick" ||
+    orderData.isHyperlocal === true ||
+    orderData.is_new_hyperlocal === 1 ||
+    orderData.is_new_hyperlocal === true;
+
+  const deliveryLat = Number(
+    orderData.deliveryLat ?? orderData.lat ?? orderData.billing_lat
+  );
+  const deliveryLong = Number(
+    orderData.deliveryLong ?? orderData.long ?? orderData.billing_long
+  );
 
   const payload = {
     order_id: String(orderData.orderId || orderData.order_id || Date.now()),
@@ -163,6 +201,16 @@ async function createShiprocketOrder(orderData = {}) {
     total_discount: Number(orderData.totalDiscount || 0),
   };
 
+  if (isQuick) {
+    payload.is_new_hyperlocal = 1;
+    if (Number.isFinite(deliveryLat) && Number.isFinite(deliveryLong)) {
+      payload.billing_lat = deliveryLat;
+      payload.billing_long = deliveryLong;
+      payload.shipping_lat = deliveryLat;
+      payload.shipping_long = deliveryLong;
+    }
+  }
+
   const result = await shiprocketRequest("post", "/orders/create/adhoc", payload);
   if (!result.success) {
     return {
@@ -172,21 +220,14 @@ async function createShiprocketOrder(orderData = {}) {
   }
 
   const data = result.data || {};
-  // Shiprocket sometimes returns HTTP 200 with an error message in the body
   const bodyMsg = String(data.message || "");
+  const { shiprocketOrderId, shipmentId } = extractIdsFromCreateResponse(data);
   const looksLikeError =
     /wrong pickup|invalid|does not exist|failed|error/i.test(bodyMsg) &&
-    !data.order_id &&
-    !data.shipment_id;
+    !shiprocketOrderId &&
+    !shipmentId;
 
-  const shiprocketOrderId =
-    data.order_id ||
-    data.shipment_id ||
-    data?.data?.order_id ||
-    data?.data?.shipment_id ||
-    null;
-
-  if (looksLikeError || !shiprocketOrderId) {
+  if (looksLikeError || (!shiprocketOrderId && !shipmentId)) {
     return {
       success: false,
       error: bodyMsg || "Shiprocket create returned no order id",
@@ -196,16 +237,29 @@ async function createShiprocketOrder(orderData = {}) {
 
   return {
     success: true,
-    shiprocketOrderId,
+    shiprocketOrderId: shiprocketOrderId || shipmentId,
+    shipmentId: shipmentId || null,
     data,
   };
 }
 
+/**
+ * @param {string|number} pickupPostcode
+ * @param {string|number} deliveryPostcode
+ * @param {number} weight
+ * @param {number} [_orderValue]
+ * @param {object} [options]
+ * @param {"quick"|"standard"} [options.mode]
+ * @param {number} [options.lat] customer lat (quick)
+ * @param {number} [options.long] customer long (quick)
+ * @param {number} [options.cod] 1 COD / 0 prepaid
+ */
 async function getShippingRate(
   pickupPostcode,
   deliveryPostcode,
   weight = 1,
-  _orderValue = 0
+  _orderValue = 0,
+  options = {}
 ) {
   const token = await getShiprocketToken();
   if (!token) {
@@ -215,19 +269,152 @@ async function getShippingRate(
     };
   }
 
+  const mode = options.mode === "quick" ? "quick" : "standard";
+  // Quick (hyperlocal) on this account is prepaid-only; COD returns no serviceability
+  const cod =
+    mode === "quick"
+      ? options.cod === 1 || options.cod === true
+        ? 1
+        : 0
+      : options.cod === 0 || options.cod === false
+        ? 0
+        : 1;
+  const pickup = pickupPostcode || getPickupPostcode();
+
   try {
-    const url = `${SHIPROCKET_BASE}/courier/serviceability/?pickup_postcode=${pickupPostcode}&delivery_postcode=${deliveryPostcode}&weight=${weight}&cod=1`;
+    const params = new URLSearchParams({
+      pickup_postcode: String(pickup),
+      delivery_postcode: String(deliveryPostcode),
+      weight: String(weight),
+      cod: String(cod),
+    });
+
+    if (mode === "quick") {
+      const shop = getPickupCoords();
+      const latTo = Number(options.lat);
+      const longTo = Number(options.long);
+      if (!shop) {
+        return {
+          success: false,
+          error:
+            "Missing SHIPROCKET_PICKUP_LAT / SHIPROCKET_PICKUP_LONG in backend .env",
+        };
+      }
+      if (!Number.isFinite(latTo) || !Number.isFinite(longTo)) {
+        return {
+          success: false,
+          error: "Customer lat/long are required for Quick delivery rates",
+        };
+      }
+      params.set("is_new_hyperlocal", "1");
+      params.set("lat_from", String(shop.lat));
+      params.set("long_from", String(shop.long));
+      params.set("lat_to", String(latTo));
+      params.set("long_to", String(longTo));
+    }
+
+    const url = `${SHIPROCKET_BASE}/courier/serviceability/?${params.toString()}`;
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return { success: true, data: response.data };
+    const normalized = normalizeServiceabilityResponse(response.data, mode);
+    if (
+      mode === "quick" &&
+      normalized.status === false &&
+      !normalized.data?.available_courier_companies?.length
+    ) {
+      return {
+        success: false,
+        error: normalized.message || "No Quick serviceability found",
+        data: normalized,
+        mode,
+      };
+    }
+    return { success: true, data: normalized, mode };
   } catch (error) {
     return {
       success: false,
       error: error.response?.data?.message || error.message,
       data: error.response?.data,
+      mode,
     };
   }
+}
+
+/**
+ * Standard: { data: { available_courier_companies: [...] } }
+ * Quick:    { status: true, data: [ { courier_name, rates, etd_hours, ... } ] }
+ */
+function normalizeServiceabilityResponse(raw, mode) {
+  if (!raw || typeof raw !== "object") return raw;
+
+  if (mode === "quick" && Array.isArray(raw.data)) {
+    const companies = raw.data.map((c, index) => ({
+      ...c,
+      courier_name: c.courier_name || "Shiprocket Quick",
+      courier_company_id: c.courier_company_id || c.id || c.courier_id || null,
+      rate: Number(c.rate ?? c.rates ?? c.freight_charge ?? 0),
+      freight_charge: Number(c.freight_charge ?? c.rates ?? c.rate ?? 0),
+      etd_hours: c.etd_hours,
+      estimated_delivery_days:
+        c.estimated_delivery_days ??
+        (c.etd_hours != null ? Number(c.etd_hours) / 24 : undefined),
+      is_surface: false,
+      mode: 1,
+      _quickIndex: index,
+    }));
+    return {
+      ...raw,
+      data: {
+        available_courier_companies: companies,
+        available_courier_companies_vg: companies,
+      },
+      available_courier_companies: companies,
+    };
+  }
+
+  // If Quick returned status:false
+  if (mode === "quick" && raw.status === false) {
+    return {
+      ...raw,
+      data: { available_courier_companies: [] },
+      available_courier_companies: [],
+    };
+  }
+
+  return raw;
+}
+
+async function assignAwb(shipmentId, courierId) {
+  if (!shipmentId) {
+    return { success: false, error: "shipmentId is required to assign AWB" };
+  }
+  const payload = {
+    shipment_id: Number(shipmentId),
+  };
+  if (courierId != null && courierId !== "") {
+    payload.courier_id = Number(courierId);
+  }
+
+  const result = await shiprocketRequest(
+    "post",
+    "/courier/assign/awb",
+    payload
+  );
+  if (!result.success) return result;
+
+  const data = result.data || {};
+  const awb =
+    data.awb_code ||
+    data?.response?.data?.awb_code ||
+    data?.data?.awb_code ||
+    null;
+
+  return {
+    success: true,
+    awbNumber: awb,
+    data,
+  };
 }
 
 async function trackShipment(trackingId) {
@@ -263,10 +450,14 @@ module.exports = {
   getShiprocketToken,
   createShiprocketOrder,
   getShippingRate,
+  assignAwb,
   trackShipment,
   generateLabel,
   cancelShiprocketOrder,
   getShipmentDetails,
   clearTokenCache,
+  getPickupPostcode,
+  getPickupCoords,
+  normalizeServiceabilityResponse,
   getLastAuthError: () => lastAuthError,
 };

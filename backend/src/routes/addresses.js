@@ -76,7 +76,7 @@ app.get("/api/addresses", authenticateToken, async (req, res) => {
 // Add new address
 app.post("/api/addresses", authenticateToken, async (req, res) => {
     try {
-        const { title, name, phone, address, city, state, pincode, isDefault } =
+        const { title, name, phone, address, city, state, pincode, isDefault, latitude, longitude } =
             req.body;
         const allowedTitles = new Set(["home", "office", "other"]);
         const titleNorm = String(title || "").trim();
@@ -85,6 +85,8 @@ app.post("/api/addresses", authenticateToken, async (req, res) => {
         const cityNorm = String(city || "").trim();
         const stateNorm = String(state || "").trim();
         const pincodeDigits = String(pincode || "").replace(/\D/g, "");
+        const latNum = latitude != null ? Number(latitude) : undefined;
+        const longNum = longitude != null ? Number(longitude) : undefined;
         // Validate required fields
         if (!titleNorm || !name || !phoneDigits || !addressNorm || !cityNorm || !stateNorm || !pincodeDigits) {
             return res.status(400).json({
@@ -145,6 +147,8 @@ app.post("/api/addresses", authenticateToken, async (req, res) => {
             city: cityNorm,
             state: stateNorm,
             pincode: pincodeDigits,
+            latitude: Number.isFinite(latNum) ? latNum : undefined,
+            longitude: Number.isFinite(longNum) ? longNum : undefined,
             isDefault: shouldBeDefault,
         });
         await newAddress.save();
@@ -166,7 +170,7 @@ app.post("/api/addresses", authenticateToken, async (req, res) => {
 app.put("/api/addresses/:id", authenticateToken, async (req, res) => {
     try {
         const addressId = req.params.id;
-        const { title, name, phone, address, city, state, pincode, isDefault } =
+        const { title, name, phone, address, city, state, pincode, isDefault, latitude, longitude } =
             req.body;
         const allowedTitles = new Set(["home", "office", "other"]);
         const titleNorm = String(title || "").trim();
@@ -175,6 +179,8 @@ app.put("/api/addresses/:id", authenticateToken, async (req, res) => {
         const cityNorm = String(city || "").trim();
         const stateNorm = String(state || "").trim();
         const pincodeDigits = String(pincode || "").replace(/\D/g, "");
+        const latNum = latitude != null ? Number(latitude) : undefined;
+        const longNum = longitude != null ? Number(longitude) : undefined;
         const existingAddress = await Address.findOne({
             _id: addressId,
             userId: req.user.id,
@@ -215,19 +221,22 @@ app.put("/api/addresses/:id", authenticateToken, async (req, res) => {
                 { isDefault: false }
             );
         }
+        const updateFields = {
+            title: titleNorm,
+            name,
+            phone: phoneDigits,
+            address: addressNorm,
+            city: cityNorm,
+            state: stateNorm,
+            pincode: pincodeDigits,
+            isDefault,
+            updatedAt: new Date(),
+        };
+        if (Number.isFinite(latNum)) updateFields.latitude = latNum;
+        if (Number.isFinite(longNum)) updateFields.longitude = longNum;
         const updatedAddress = await Address.findByIdAndUpdate(
             addressId,
-            {
-                title: titleNorm,
-                name,
-                phone: phoneDigits,
-                address: addressNorm,
-                city: cityNorm,
-                state: stateNorm,
-                pincode: pincodeDigits,
-                isDefault,
-                updatedAt: new Date(),
-            },
+            updateFields,
             { new: true }
         );
         res.json({

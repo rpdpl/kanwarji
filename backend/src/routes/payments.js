@@ -20,15 +20,14 @@ const {
 const { authenticateToken, requireAdmin } = require("../middleware/auth");
 const { upload } = require("../middleware/upload");
 const { generateOTP, generateOrderId, calculateBilledWeight } = require("../utils/ids");
-const { shouldUseInstamojoForPincode, getShippingEstimate } = require("../utils/pincode");
 const { generateInvoicePDF } = require("../utils/invoice");
+const { createShipmentForOrder } = require("../utils/createShipmentForOrder");
 const env = require("../config/env");
 const email = require("../../services/email");
 const {
   instamojoClient,
   processInstamojoRefund,
 } = require("../../services/instamojo");
-const shiprocket = require("../../services/shiprocket");
 
 const {
   sendSignupMail,
@@ -63,21 +62,19 @@ app.post("/api/create-instamojo-payment", authenticateToken, async (req, res) =>
         const userId = req.user.id;
         console.log(`[INSTAMOJO PAYMENT] Creating payment for user ${userId}, amount: ${orderData.totalAmount}`);
 
-        // Check if pincode is in Instamojo region
-        let finalShiprocketFee = orderData.shiprocketFee || 0;
-        let finalTotalAmount = orderData.totalAmount || 0;
+        const finalShiprocketFee = Number(orderData.shiprocketFee) || 0;
+        const finalTotalAmount = Number(orderData.totalAmount) || 0;
+        const modeRaw =
+            orderData.requestedShippingMode || orderData.shippingMode || "standard";
+        const mode = modeRaw === "quick" ? "quick" : "standard";
+        const latNum =
+            orderData.deliveryLat != null ? Number(orderData.deliveryLat) : undefined;
+        const longNum =
+            orderData.deliveryLong != null ? Number(orderData.deliveryLong) : undefined;
 
-        const pincode = orderData.address?.pincode;
-        if (shouldUseInstamojoForPincode(pincode)) {
-            // Pincode is in Instamojo region - bypass Shiprocket and set shipping to ZERO
-            console.log(`[INSTAMOJO PAYMENT] Pincode ${pincode} is in Instamojo region - Setting shipping to ZERO`);
-            finalShiprocketFee = 0;
-            // Recalculate totalAmount: subtotal + 0 shipping + tax
-            finalTotalAmount = (orderData.subtotal || 0) + 0 + (orderData.taxAmount || 0);
-        } else {
-            // Pincode is NOT in Instamojo region - use Shiprocket shipping that's already in orderData
-            console.log(`[INSTAMOJO PAYMENT] Pincode ${pincode} is NOT in Instamojo region - Using Shiprocket shipping`);
-        }
+        console.log(
+            `[INSTAMOJO PAYMENT] Pincode ${orderData.address?.pincode} shippingMode=${mode} fee=${finalShiprocketFee}`
+        );
 
         // Create an order record with pending payment
         // Map items to preserve variant/unit info and include convenience fee if provided
@@ -114,6 +111,17 @@ app.post("/api/create-instamojo-payment", authenticateToken, async (req, res) =>
             convenienceFee,                        // persist fee
             totalAmount: finalTotalAmount,
             specialRequests: orderData.specialRequests || "",
+            requestedShippingMode: mode,
+            shippingMode: mode,
+            shippingFallbackUsed: false,
+            deliveryLat: Number.isFinite(latNum) ? latNum : undefined,
+            deliveryLong: Number.isFinite(longNum) ? longNum : undefined,
+            courierCompanyId:
+                orderData.courierCompanyId != null
+                    ? String(orderData.courierCompanyId)
+                    : undefined,
+            courierName: orderData.courierName || undefined,
+            isLocalShiprocket: false,
         });
 
         try {
@@ -282,210 +290,34 @@ app.get("/api/instamojo-callback", async (req, res) => {
             await order.save();
             console.log(`[INSTAMOJO] Order ${order.orderId} updated - Status: paid`);
 
-            // ✅ Automatically create Shiprocket Order after payment using the working API endpoint
-            // NOTE: Using /api/shiprocket/create-order endpoint which is tested and working in Postman
             let shiprocketCreationAttempted = false;
             let shiprocketCreationSuccess = false;
 
             try {
-                console.log("\n========================================");
-                console.log("🚀 [SHIPROCKET] STARTING ORDER CREATION VIA API");
-                console.log("========================================");
-                console.log(`[SHIPROCKET] Order ID: ${order.orderId}`);
-                console.log(`[SHIPROCKET] Order DB ID: ${order._id}`);
-                console.log(`[SHIPROCKET] Payment Status: ${order.paymentStatus}`);
-                console.log(`[SHIPROCKET] Order Status: ${order.orderStatus}`);
+                console.log(
+                    `[SHIPROCKET] Creating shipment for paid order ${order.orderId} mode=${order.requestedShippingMode}`
+                );
 
                 const user = await User.findById(order.userId);
                 if (!user) {
-                    console.error(`[SHIPROCKET] User not found for userId: ${order.userId}`);
                     throw new Error(`User not found for userId: ${order.userId}`);
                 }
 
-                console.log(`[SHIPROCKET] User found: ${user.email}`);
-                console.log(`[SHIPROCKET] Delivery Address: ${order.address?.city || 'N/A'}, ${order.address?.state || 'N/A'}, ${order.address?.pincode || 'N/A'}`);
-                console.log(`[SHIPROCKET] Items Count: ${order.items?.length || 0}`);
-                console.log(`[SHIPROCKET] Total Weight: ${order.weight || 0.5} kg`);
-
-                // Helper function to get safe value with fallback
-                const safeValue = (value, fallback) => {
-                    if (value === null || value === undefined || String(value).trim() === '') {
-                        return fallback;
-                    }
-                    return value;
-                };
-
-                // Split name into first and last name
-                const fullName = safeValue(order.address?.name, "Customer");
-                const nameParts = fullName.trim().split(' ');
-                const firstName = nameParts[0] || "Customer";
-                const lastName = nameParts.slice(1).join(' ') || "Name";
-
-                // Prepare the payload matching the working Postman format
-                // Use our platform orderId directly for Shiprocket order_id to keep it consistent everywhere
-                const shiprocketOrderId = order.orderId;
-
-                // Recompute billed weight from items if available; fallback to order.weight
-                let computedTotalWeight = 0;
-                if (Array.isArray(order.items)) {
-                    for (const it of order.items) {
-                        const w = parseFloat(it?.weight);
-                        const q = Number(it?.quantity) || 0;
-                        if (!isNaN(w) && w > 0 && q > 0) {
-                            computedTotalWeight += w * q;
-                        }
-                    }
-                }
-                let billedW = computedTotalWeight > 0
-                    ? calculateBilledWeight(computedTotalWeight)
-                    : (Number(order.weight) || 0.5);
-                // Keep order.weight consistent for downstream usage and persistence on next save
-                order.weight = billedW;
-                let boxLen = 10, boxBr = 10, boxHt = 6; // default upto 1kg
-                if (billedW <= 1) {
-                    boxLen = 10; boxBr = 10; boxHt = 6;
-                } else if (billedW <= 2) {
-                    boxLen = 15; boxBr = 15; boxHt = 10;
-                } else if (billedW <= 3) {
-                    boxLen = 18; boxBr = 18; boxHt = 10;
-                } else if (billedW <= 4) {
-                    boxLen = 20; boxBr = 20; boxHt = 12;
-                } else { // upto 5 Kgs (and above default)
-                    boxLen = 24; boxBr = 20; boxHt = 15;
-                }
-
-                // Ensure unique SKUs per order as Shiprocket rejects repeated SKUs
-                const skuCountMapCb = new Map();
-                const makeUniqueSkuCb = (base) => {
-                    const key = String(base || "SKU-001");
-                    const count = (skuCountMapCb.get(key) || 0) + 1;
-                    skuCountMapCb.set(key, count);
-                    return count === 1 ? key : `${key}-${count}`;
-                };
-
-                const apiPayload = {
-                    orderId: shiprocketOrderId,
-                    orderData: {
-                        billingCustomerName: firstName,
-                        billingLastName: lastName,
-                        billingEmail: safeValue(user.email, "customer@example.com"),
-                        billingPhone: safeValue(order.address?.phone, "9999999999"),
-                        billingAddress: safeValue(order.address?.address, "Address not provided"),
-                        billingCity: safeValue(order.address?.city, "Mumbai"),
-                        billingPincode: safeValue(order.address?.pincode, "400001"),
-                        billingState: safeValue(order.address?.state, "Maharashtra"),
-                        billingCountry: "India",
-                        shippingIsBilling: true,
-                        paymentMethod: "Prepaid",
-                        subtotal: Number(order.subtotal) || 100,
-                        shippingCharges: Number(order.shiprocketFee) || 0,
-                        transactionCharges: Number(order.convenienceFee || 0) * 1.18,
-                        weight: billedW,
-                        length: boxLen,
-                        breadth: boxBr,
-                        height: boxHt,
-                        items: (order.items || []).map(item => {
-                            const baseSku = safeValue(item.itemId || item.name, "SKU-001");
-                            const uniqueSku = makeUniqueSkuCb(baseSku);
-                            return {
-                                name: safeValue(item.name, "Product"),
-                                sku: uniqueSku,
-                                quantity: Number(item.quantity) || 1,
-                                price: Number(item.price) || 0,
-                                discount: Number(item.discount) || 0,
-                                tax: Number(item.tax) || 0
-                            };
-                        })
-                    }
-                };
-
-                // Ensure at least one item exists
-                if (apiPayload.orderData.items.length === 0) {
-                    apiPayload.orderData.items.push({
-                        name: "Order Item",
-                        sku: "ITEM-001",
-                        quantity: 1,
-                        price: Number(order.subtotal) || 100,
-                        discount: 0,
-                        tax: 0
-                    });
-                }
-
-                console.log("[SHIPROCKET] API Payload prepared:");
-                console.log(JSON.stringify(apiPayload, null, 2));
-                console.log("[SHIPROCKET] Calling /api/shiprocket/create-order endpoint...");
-
                 shiprocketCreationAttempted = true;
+                const srResult = await createShipmentForOrder(order, {
+                    email: user.email,
+                });
+                shiprocketCreationSuccess = !!srResult.success;
 
-                // Call Shiprocket service directly to avoid internal HTTP self-calls and timeouts
-                try {
-                    console.log("[SHIPROCKET] Calling service.createShiprocketOrder directly...");
-                    const srResult = await shiprocket.createShiprocketOrder({
-                        orderId: apiPayload.orderId,
-                        ...apiPayload.orderData,
-                    });
-
-                    console.log("[SHIPROCKET] Service Response received:");
-                    console.log(JSON.stringify(srResult, null, 2));
-
-                    if (srResult && srResult.success) {
-                        order.shiprocketOrderId = srResult.shiprocketOrderId || shiprocketOrderId;
-                        order.shipmentStatus = "created";
-                        order.shiprocketError = null;
-                        await order.save();
-                        shiprocketCreationSuccess = true;
-
-                        console.log("========================================");
-                        console.log(`✅ [SHIPROCKET] ORDER CREATED SUCCESSFULLY`);
-                        console.log(`   Shiprocket Order ID: ${srResult.shiprocketOrderId}`);
-                        console.log(`   Our Order ID: ${order.orderId}`);
-                        console.log("========================================\n");
-                    } else {
-                        const errorMsg = srResult?.error || "Unknown error from Shiprocket service";
-                        order.shiprocketError = errorMsg;
-                        order.shipmentStatus = "failed";
-                        await order.save();
-
-                        console.log("========================================");
-                        console.error(`❌ [SHIPROCKET] ORDER CREATION FAILED`);
-                        console.error(`   Order ID: ${order.orderId}`);
-                        console.error(`   Error: ${errorMsg}`);
-                        console.error(`   Full Response: ${JSON.stringify(srResult, null, 2)}`);
-                        console.log("========================================\n");
-                    }
-                } catch (apiError) {
-                    const errorMsg = apiError.response?.data?.error || apiError.response?.data?.message || apiError.message || "Shiprocket service call failed";
-                    order.shiprocketError = errorMsg;
-                    order.shipmentStatus = "failed";
-                    await order.save();
-
-                    console.log("========================================");
-                    console.error(`❌ [SHIPROCKET] SERVICE CALL FAILED`);
-                    console.error(`   Order ID: ${order.orderId}`);
-                    console.error(`   Error: ${errorMsg}`);
-                    console.error(`   Stack: ${apiError.stack}`);
-                    console.log("========================================\n");
-                }
-
-                // Send emails regardless of Shiprocket status
                 try {
                     await sendPaymentSuccessEmail(user, order);
                     await sendOrderConfirmationEmail(user, order);
                     console.log(`[EMAIL] Confirmation emails sent to ${user.email}`);
                 } catch (emailError) {
                     console.error(`[EMAIL] Failed to send confirmation emails:`, emailError.message);
-                    // Don't throw - email failure shouldn't block the order
                 }
-
             } catch (e) {
-                console.log("========================================");
-                console.error("❌ [SHIPROCKET] CRITICAL ERROR");
-                console.error(`   Order ID: ${order.orderId}`);
-                console.error(`   Error Message: ${e?.message}`);
-                console.error(`   Error Stack: ${e?.stack}`);
-                console.log("========================================\n");
-
-                // Save error to order
+                console.error(`[SHIPROCKET] CRITICAL ERROR for ${order.orderId}:`, e?.message);
                 try {
                     order.shiprocketError = `Critical error: ${e?.message}`;
                     order.shipmentStatus = "failed";
@@ -494,21 +326,20 @@ app.get("/api/instamojo-callback", async (req, res) => {
                     console.error("[SHIPROCKET] Failed to save error to order:", saveError.message);
                 }
 
-                // Still try to send emails even if Shiprocket failed
                 try {
                     const user = await User.findById(order.userId);
                     if (user) {
                         await sendPaymentSuccessEmail(user, order);
                         await sendOrderConfirmationEmail(user, order);
-                        console.log(`[EMAIL] Confirmation emails sent despite Shiprocket failure`);
                     }
                 } catch (emailError) {
                     console.error(`[EMAIL] Failed to send emails:`, emailError.message);
                 }
             }
 
-            // Log final status
-            console.log(`[SHIPROCKET] Final Status - Attempted: ${shiprocketCreationAttempted}, Success: ${shiprocketCreationSuccess}`);
+            console.log(
+                `[SHIPROCKET] Final Status - Attempted: ${shiprocketCreationAttempted}, Success: ${shiprocketCreationSuccess}`
+            );
 
             console.log(`[INSTAMOJO] Payment processing complete. Redirecting to payment-success...`);
             return res.redirect(`${CLIENT_BASE_URL}/payment-success?orderId=${order.orderId}`);

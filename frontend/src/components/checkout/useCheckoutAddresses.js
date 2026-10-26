@@ -5,21 +5,12 @@ import {
   updateAddress,
   deleteAddress,
 } from "../../api/addresses";
-import { FREE_SHIPPING_PINCODES } from "../../utils/shiprocketAPI";
 import { emptyAddr, validateAddressForm } from "./utils";
 
 export default function useCheckoutAddresses({
   loadData,
   selectedAddressId,
   setSelectedAddressId,
-  setIsLocalDelivery,
-  setShowLocalDeliveryModal,
-  warnedPincode,
-  setWarnedPincode,
-  setShippingCharge,
-  setShippingLoading,
-  setShippingError,
-  setExpectedEtaText,
 }) {
   const [showMenuFor, setShowMenuFor] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -27,22 +18,6 @@ export default function useCheckoutAddresses({
   const [editingAddress, setEditingAddress] = useState(null);
   const [editForm, setEditForm] = useState(emptyAddr);
   const [addForm, setAddForm] = useState(emptyAddr);
-
-  const applyLocalPinEffects = (pin) => {
-    const isLocal = FREE_SHIPPING_PINCODES.has(pin);
-    if (isLocal) {
-      setIsLocalDelivery(true);
-      if (warnedPincode !== pin) {
-        setShowLocalDeliveryModal(true);
-        setWarnedPincode(pin);
-      }
-      setShippingCharge(0);
-      setShippingLoading(false);
-      setShippingError("");
-      setExpectedEtaText("");
-    }
-    return isLocal;
-  };
 
   const handleDeleteAddress = async (id) => {
     if (!confirm("Are you sure you want to delete this address?")) return;
@@ -91,12 +66,7 @@ export default function useCheckoutAddresses({
     try {
       const res = await updateAddress(editingAddress._id, result.normalized);
       if (res.data.success) {
-        const pinRaw = String(editForm.pincode || "").trim();
-        const pin = pinRaw.replace(/\D/g, "").slice(0, 6);
-        const isLocal = applyLocalPinEffects(pin);
-        if (!isLocal) {
-          toast.success(res.data.message || "Address updated");
-        }
+        toast.success(res.data.message || "Address updated");
         setShowEditModal(false);
         setEditingAddress(null);
         await loadData();
@@ -131,14 +101,7 @@ export default function useCheckoutAddresses({
     try {
       const res = await createAddress(result.normalized);
       if (res.data.success) {
-        const pinRaw = String(
-          result.normalized.pincode || res.data?.address?.pincode || ""
-        ).trim();
-        const pin = pinRaw.replace(/\D/g, "").slice(0, 6);
-        const isLocal = applyLocalPinEffects(pin);
-        if (!isLocal) {
-          toast.success(res.data.message || "Address added");
-        }
+        toast.success(res.data.message || "Address added");
         setShowAddModal(false);
         await loadData();
         const newId = res.data?.address?._id || res.data?.addressId;

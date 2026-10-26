@@ -140,12 +140,9 @@ export default function CartItemsCard({
           </div>
         )}
         {!shippingLoading && !shippingError && shippingFee === 0 && (
-          <div className="flex justify-between text-sm font-bold text-red-600">
+          <div className="flex justify-between text-sm">
             <span>Shipping Fee</span>
-            <span>
-              Local Delivery Charges Payable at time of delivery, depending on
-              distance.
-            </span>
+            <span>₹0.00</span>
           </div>
         )}
         {savings > 0 && (

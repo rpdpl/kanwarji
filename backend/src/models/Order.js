@@ -60,6 +60,22 @@ const orderSchema = new mongoose.Schema({
   shiprocketError: { type: String },
   estimatedShiprocket: { type: Date },
   shiprocketAt: { type: Date },
+  // quick = Hyperlocal; standard = nationwide. requested* is what checkout asked for.
+  requestedShippingMode: {
+    type: String,
+    enum: ["quick", "standard"],
+    default: "standard",
+  },
+  shippingMode: {
+    type: String,
+    enum: ["quick", "standard"],
+    default: "standard",
+  },
+  shippingFallbackUsed: { type: Boolean, default: false },
+  deliveryLat: { type: Number },
+  deliveryLong: { type: Number },
+  courierCompanyId: { type: String },
+  courierName: { type: String },
   cancelledAt: { type: Date },
   paidAt: { type: Date },
   refundedAt: { type: Date },
@@ -74,6 +90,7 @@ const orderSchema = new mongoose.Schema({
   pickupRequestId: { type: String }, // legacy
   pickupStatus: { type: String, default: "pending" },
   pickupRequestError: { type: String, default: "" },
+  // Legacy: old free local NCR path that skipped Shiprocket
   isLocalShiprocket: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
