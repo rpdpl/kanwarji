@@ -167,17 +167,20 @@ export async function rejectCancellation(requestId: string, remarks: string) {
   )
 }
 
+/** Confirm by marking payment paid (backend: PATCH /api/admin/orders/:id/payment). */
 export async function confirmOrder(orderId: string) {
-  return apiJson<{ success?: boolean; message?: string }>(`/admin/orders/${orderId}/confirm`, {
+  return apiJson<{ success?: boolean; message?: string }>(`/admin/orders/${orderId}/payment`, {
     method: "PATCH",
     json: true,
+    body: JSON.stringify({ paymentStatus: "paid" }),
   })
 }
 
 export async function markOrderPaid(orderId: string) {
-  return apiJson<{ success?: boolean; message?: string }>(`/admin/orders/${orderId}/mark-paid`, {
+  return apiJson<{ success?: boolean; message?: string }>(`/admin/orders/${orderId}/payment`, {
     method: "PATCH",
     json: true,
+    body: JSON.stringify({ paymentStatus: "paid" }),
   })
 }
 

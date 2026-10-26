@@ -19,7 +19,9 @@ After each phase, verify:
 - PM2 process: `ecom-backend` → entry `server.js` (thin bootstrap)
 - Production Mongo: `mongodb://127.0.0.1:27017/test`
 - Keep `.env` only on server; never commit secrets
-- Frontend build: `VITE_API_URL`; Admin: `NEXT_PUBLIC_API_BASE_URL` ending with `/api`
+- Frontend build: `VITE_API_URL=https://kanwarji.in` (host only; paths already `/api/...`)
+- Admin build: `NEXT_PUBLIC_API_BASE_URL=https://kanwarji.in/api` (paths are `/auth/...`, not `/api/...`)
+- Nginx: proxy `/api` → Express **without** stripping `/api` (no `/api/api` hack)
 
 ## Backup
 

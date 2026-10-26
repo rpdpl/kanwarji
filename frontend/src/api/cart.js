@@ -11,4 +11,5 @@ export const removeFromCart = (payload) =>
 
 export const clearCart = (userId) => apiDelete(`/api/cart/clear/${userId}`);
 
-export const deleteCart = (userId) => apiDelete(`/api/cart/${userId}`);
+/** Same as clearCart — backend has DELETE /api/cart/clear/:userId (not DELETE /api/cart/:userId). */
+export const deleteCart = (userId) => apiDelete(`/api/cart/clear/${userId}`);

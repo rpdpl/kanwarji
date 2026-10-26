@@ -7,7 +7,8 @@ import { toast } from "react-toastify";
 const getBaseURL = () => {
   // Check if we're in production and VITE_API_URL is not set
   if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
-    return 'https://kanwarji.in/api';
+    // Host only — request paths already include /api/...
+    return 'https://kanwarji.in';
   }
   // Use the environment variable or fallback to localhost for development
   return import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -41,10 +42,11 @@ axiosInstance.interceptors.response.use(
       "/api/admin-items",
       "/api/items",
       "/api/auth/login",
-      "/api/auth/register",
+      "/api/auth/signup",
       "/api/auth/verify-otp",
+      "/api/forgot-password",
+      "/api/verify-otp",
       "/api/reset-password",
-      "/api/auth/send-reset-otp",
     ];
 
     const isPublicEndpoint = publicEndpoints.some((endpoint) =>
