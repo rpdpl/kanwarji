@@ -32,18 +32,18 @@ export default function LocalDeliveryModal({
         </button>
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600 text-lg font-bold">
-            Q
+            S
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-1">
-              Quick delivery available
+              Same day delivery available
             </h3>
             <p className="text-sm text-gray-700">
-              Your address is in Delhi / NCR. Choose{" "}
-              <span className="font-semibold">Quick delivery</span> for
-              same-city courier (we&apos;ll use your phone GPS), or keep{" "}
-              <span className="font-semibold">Standard shipping</span>. Quick
-              rates come from Shiprocket and are included in your order total.
+              Your pincode supports{" "}
+              <span className="font-semibold">Same day delivery</span> for
+              faster local delivery in Delhi. You can choose Same day or keep{" "}
+              <span className="font-semibold">Standard shipping</span>. Delivery
+              charges are calculated and included in your order total.
             </p>
           </div>
         </div>
@@ -65,7 +65,7 @@ export default function LocalDeliveryModal({
               borderColor: "rgb(200, 20, 22)",
             }}
           >
-            Choose Quick
+            Choose Same day
           </button>
         </div>
       </div>

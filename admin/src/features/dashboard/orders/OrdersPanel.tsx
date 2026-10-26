@@ -208,29 +208,32 @@ export function OrdersPanel({
                                         Mode:{" "}
                                         <span className="font-medium capitalize">
                                           {order.shippingMode === "quick"
-                                            ? "Quick"
+                                            ? "Same day"
                                             : order.shippingMode === "standard"
                                               ? "Standard"
                                               : order.requestedShippingMode === "quick"
-                                                ? "Quick (requested)"
+                                                ? "Same day (requested)"
                                                 : "Standard"}
                                         </span>
                                         {order.requestedShippingMode &&
                                           order.requestedShippingMode !== order.shippingMode && (
                                             <span className="text-gray-500">
                                               {" "}
-                                              · requested {order.requestedShippingMode}
+                                              · requested{" "}
+                                              {order.requestedShippingMode === "quick"
+                                                ? "Same day"
+                                                : order.requestedShippingMode}
                                             </span>
                                           )}
                                       </div>
                                       {order.shippingFallbackUsed && (
                                         <div className="text-amber-700 font-medium">
-                                          Fallback used: Quick → Standard
+                                          Fallback used: Same day to Standard
                                         </div>
                                       )}
                                       {order.deliveryLat != null && order.deliveryLong != null && (
                                         <div className="truncate text-gray-500">
-                                          GPS: {Number(order.deliveryLat).toFixed(5)},{" "}
+                                          Drop coords: {Number(order.deliveryLat).toFixed(5)},{" "}
                                           {Number(order.deliveryLong).toFixed(5)}
                                         </div>
                                       )}

@@ -115,8 +115,18 @@ async function createShipmentForOrder(order, opts = {}) {
   }
 
   if (requested === "quick") {
-    const lat = Number(order.deliveryLat);
-    const long = Number(order.deliveryLong);
+    let lat = Number(order.deliveryLat);
+    let long = Number(order.deliveryLong);
+    if (!Number.isFinite(lat) || !Number.isFinite(long)) {
+      const { getPincodeCoords } = require("./pincodeCoords");
+      const fromPin = getPincodeCoords(order.address?.pincode);
+      if (fromPin) {
+        lat = fromPin.lat;
+        long = fromPin.long;
+        order.deliveryLat = lat;
+        order.deliveryLong = long;
+      }
+    }
     if (!Number.isFinite(lat) || !Number.isFinite(long)) {
       console.warn(
         `[SHIPROCKET] Quick requested for ${order.orderId} but coords missing — falling back to standard`

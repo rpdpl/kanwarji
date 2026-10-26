@@ -11,6 +11,11 @@ const addressSchema = new mongoose.Schema({
   pincode: { type: String, required: true },
   latitude: { type: Number },
   longitude: { type: Number },
+  preferredShippingMode: {
+    type: String,
+    enum: ["standard", "quick"],
+    default: "standard",
+  },
   isDefault: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },

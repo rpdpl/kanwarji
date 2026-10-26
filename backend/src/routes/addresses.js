@@ -29,6 +29,7 @@ const {
   processInstamojoRefund,
 } = require("../../services/instamojo");
 const shiprocket = require("../../services/shiprocket");
+const { resolvePreferredShippingMode } = require("../utils/ncrBounds");
 
 const {
   sendSignupMail,
@@ -76,8 +77,19 @@ app.get("/api/addresses", authenticateToken, async (req, res) => {
 // Add new address
 app.post("/api/addresses", authenticateToken, async (req, res) => {
     try {
-        const { title, name, phone, address, city, state, pincode, isDefault, latitude, longitude } =
-            req.body;
+        const {
+            title,
+            name,
+            phone,
+            address,
+            city,
+            state,
+            pincode,
+            isDefault,
+            latitude,
+            longitude,
+            preferredShippingMode,
+        } = req.body;
         const allowedTitles = new Set(["home", "office", "other"]);
         const titleNorm = String(title || "").trim();
         const phoneDigits = String(phone || "").replace(/\D/g, "");
@@ -87,6 +99,12 @@ app.post("/api/addresses", authenticateToken, async (req, res) => {
         const pincodeDigits = String(pincode || "").replace(/\D/g, "");
         const latNum = latitude != null ? Number(latitude) : undefined;
         const longNum = longitude != null ? Number(longitude) : undefined;
+        const shippingResolved = resolvePreferredShippingMode({
+            preferredShippingMode,
+            pincode: pincodeDigits,
+            latitude: latNum,
+            longitude: longNum,
+        });
         // Validate required fields
         if (!titleNorm || !name || !phoneDigits || !addressNorm || !cityNorm || !stateNorm || !pincodeDigits) {
             return res.status(400).json({
@@ -147,15 +165,17 @@ app.post("/api/addresses", authenticateToken, async (req, res) => {
             city: cityNorm,
             state: stateNorm,
             pincode: pincodeDigits,
-            latitude: Number.isFinite(latNum) ? latNum : undefined,
-            longitude: Number.isFinite(longNum) ? longNum : undefined,
+            latitude: shippingResolved.latitude,
+            longitude: shippingResolved.longitude,
+            preferredShippingMode: shippingResolved.preferredShippingMode,
             isDefault: shouldBeDefault,
         });
         await newAddress.save();
         res.status(201).json({
             success: true,
-            message: "Address added successfully",
+            message: shippingResolved.message || "Address added successfully",
             address: newAddress,
+            shippingCoerced: shippingResolved.coerced,
         });
     } catch (error) {
         console.error("Add address error:", error);
@@ -170,8 +190,19 @@ app.post("/api/addresses", authenticateToken, async (req, res) => {
 app.put("/api/addresses/:id", authenticateToken, async (req, res) => {
     try {
         const addressId = req.params.id;
-        const { title, name, phone, address, city, state, pincode, isDefault, latitude, longitude } =
-            req.body;
+        const {
+            title,
+            name,
+            phone,
+            address,
+            city,
+            state,
+            pincode,
+            isDefault,
+            latitude,
+            longitude,
+            preferredShippingMode,
+        } = req.body;
         const allowedTitles = new Set(["home", "office", "other"]);
         const titleNorm = String(title || "").trim();
         const phoneDigits = String(phone || "").replace(/\D/g, "");
@@ -181,6 +212,12 @@ app.put("/api/addresses/:id", authenticateToken, async (req, res) => {
         const pincodeDigits = String(pincode || "").replace(/\D/g, "");
         const latNum = latitude != null ? Number(latitude) : undefined;
         const longNum = longitude != null ? Number(longitude) : undefined;
+        const shippingResolved = resolvePreferredShippingMode({
+            preferredShippingMode,
+            pincode: pincodeDigits,
+            latitude: latNum,
+            longitude: longNum,
+        });
         const existingAddress = await Address.findOne({
             _id: addressId,
             userId: req.user.id,
@@ -229,20 +266,35 @@ app.put("/api/addresses/:id", authenticateToken, async (req, res) => {
             city: cityNorm,
             state: stateNorm,
             pincode: pincodeDigits,
+            preferredShippingMode: shippingResolved.preferredShippingMode,
             isDefault,
             updatedAt: new Date(),
         };
-        if (Number.isFinite(latNum)) updateFields.latitude = latNum;
-        if (Number.isFinite(longNum)) updateFields.longitude = longNum;
+        const unsetFields = {};
+        if (Number.isFinite(shippingResolved.latitude)) {
+            updateFields.latitude = shippingResolved.latitude;
+        } else {
+            unsetFields.latitude = 1;
+        }
+        if (Number.isFinite(shippingResolved.longitude)) {
+            updateFields.longitude = shippingResolved.longitude;
+        } else {
+            unsetFields.longitude = 1;
+        }
+        const updateQuery = { $set: updateFields };
+        if (Object.keys(unsetFields).length) {
+            updateQuery.$unset = unsetFields;
+        }
         const updatedAddress = await Address.findByIdAndUpdate(
             addressId,
-            updateFields,
+            updateQuery,
             { new: true }
         );
         res.json({
             success: true,
-            message: "Address updated successfully",
+            message: shippingResolved.message || "Address updated successfully",
             address: updatedAddress,
+            shippingCoerced: shippingResolved.coerced,
         });
     } catch (error) {
         console.error("Update address error:", error);

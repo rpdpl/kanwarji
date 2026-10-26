@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { createInstamojoPayment } from "../../api/orders";
+import { getPincodeCoords } from "../../utils/pincodeCoords";
 import { buildOrderItems } from "./utils";
 
 export default function usePlaceOrder({
@@ -80,9 +81,20 @@ export default function usePlaceOrder({
         return;
       }
 
+      let dropLat = deliveryLat;
+      let dropLong = deliveryLong;
       if (shippingMode === "quick") {
-        if (!Number.isFinite(Number(deliveryLat)) || !Number.isFinite(Number(deliveryLong))) {
-          toast.error("Quick delivery needs your location. Please enable GPS and select Quick again.");
+        if (!Number.isFinite(Number(dropLat)) || !Number.isFinite(Number(dropLong))) {
+          const fromPin = getPincodeCoords(address.pincode);
+          if (fromPin) {
+            dropLat = fromPin.lat;
+            dropLong = fromPin.long;
+          }
+        }
+        if (!Number.isFinite(Number(dropLat)) || !Number.isFinite(Number(dropLong))) {
+          toast.error(
+            "Same day delivery isn't available for this location. Please use Standard shipping."
+          );
           setPlacingOrder(false);
           return;
         }
@@ -109,8 +121,14 @@ export default function usePlaceOrder({
         billedWeight: weight,
         shippingMode: shippingMode === "quick" ? "quick" : "standard",
         requestedShippingMode: shippingMode === "quick" ? "quick" : "standard",
-        deliveryLat: deliveryLat != null ? Number(deliveryLat) : undefined,
-        deliveryLong: deliveryLong != null ? Number(deliveryLong) : undefined,
+        deliveryLat:
+          shippingMode === "quick" && dropLat != null
+            ? Number(dropLat)
+            : undefined,
+        deliveryLong:
+          shippingMode === "quick" && dropLong != null
+            ? Number(dropLong)
+            : undefined,
         courierCompanyId:
           selectedCourier?.courier_company_id ??
           selectedCourier?.id ??

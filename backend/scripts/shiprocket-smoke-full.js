@@ -8,6 +8,7 @@
  */
 require("dotenv").config();
 const shiprocket = require("../services/shiprocket");
+const { getPincodeCoords } = require("../src/utils/pincodeCoords");
 
 function mask(v) {
   if (!v) return "(empty)";
@@ -40,15 +41,28 @@ async function main() {
   const pickup = process.env.SHIPROCKET_PICKUP_LOCATION || "Primary";
   const shopLat = Number(process.env.SHIPROCKET_PICKUP_LAT);
   const shopLong = Number(process.env.SHIPROCKET_PICKUP_LONG);
-  // Nearby drop ~3.7km from shop (Connaught Place area — known Quick-serviceable)
-  const dropLat = 28.6328;
-  const dropLong = 77.2197;
+  // Drop = pin centroid from PINCODE_COORDS (same path as checkout Quick)
+  const dropPin = "110001";
+  const dropCoords = getPincodeCoords(dropPin);
+  if (!dropCoords) {
+    console.error("FAIL: no PINCODE_COORDS for", dropPin);
+    process.exit(1);
+  }
+  const dropLat = dropCoords.lat;
+  const dropLong = dropCoords.long;
 
   console.log("=== Shiprocket FULL live smoke (standard + Quick) ===");
   console.log("EMAIL:", mask(process.env.SHIPROCKET_EMAIL));
   console.log("PASSWORD:", process.env.SHIPROCKET_PASSWORD ? "yes" : "no");
   console.log("PICKUP nickname:", pickup);
   console.log("PICKUP_LAT/LONG:", shopLat || "(missing)", shopLong || "(missing)");
+  console.log(
+    "DROP pin→coords:",
+    dropPin,
+    dropLat,
+    dropLong,
+    "(from PINCODE_COORDS)"
+  );
   console.log("KEEP_ORDERS:", keepOrders ? "yes (will NOT cancel)" : "no (will cancel demos)");
 
   // ─── 1) Auth ───
@@ -91,7 +105,7 @@ async function main() {
   }
   const quickRate = await shiprocket.getShippingRate(
     "110006",
-    "110001",
+    dropPin,
     0.5,
     500,
     { mode: "quick", lat: dropLat, long: dropLong, cod: 0 }

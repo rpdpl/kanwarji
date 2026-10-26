@@ -63,7 +63,8 @@ app.post("/api/create-instamojo-payment", authenticateToken, async (req, res) =>
         console.log(`[INSTAMOJO PAYMENT] Creating payment for user ${userId}, amount: ${orderData.totalAmount}`);
 
         const finalShiprocketFee = Number(orderData.shiprocketFee) || 0;
-        const finalTotalAmount = Number(orderData.totalAmount) || 0;
+        const finalTotalAmount =
+            Math.round((Number(orderData.totalAmount) || 0) * 100) / 100;
         const modeRaw =
             orderData.requestedShippingMode || orderData.shippingMode || "standard";
         const mode = modeRaw === "quick" ? "quick" : "standard";
@@ -143,9 +144,10 @@ app.post("/api/create-instamojo-payment", authenticateToken, async (req, res) =>
         console.log(`[INSTAMOJO PAYMENT] Callback URL (for payment verification): ${redirectUrl}`);
 
         // STEP 3: Create payment request at Instamojo
+        const amountForInstamojo = Number(order.totalAmount).toFixed(2);
         const payload = {
             purpose: `Order ${order.orderId}`,
-            amount: String(order.totalAmount),
+            amount: amountForInstamojo,
             buyer_name: order.address?.name || user?.name || "Customer",
             email: user?.email || "",
             phone: order.address?.phone || user?.phone || "",
@@ -155,7 +157,7 @@ app.post("/api/create-instamojo-payment", authenticateToken, async (req, res) =>
             allow_repeated_payments: false,
         };
 
-        console.log(`[INSTAMOJO PAYMENT] Initiating Instamojo payment request - Amount: ${order.totalAmount}`);
+        console.log(`[INSTAMOJO PAYMENT] Initiating Instamojo payment request - Amount: ${amountForInstamojo}`);
 
         // --- BYPASS MODE ---
         if (typeof BYPASS_PAYMENT_FOR_TESTING !== 'undefined' && BYPASS_PAYMENT_FOR_TESTING === true) {

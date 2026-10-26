@@ -1,46 +1,45 @@
 import React from "react";
 
 export default function ShippingModeCard({
+  hasAddress,
   quickEligible,
   shippingMode,
   onSelectMode,
-  gpsLoading,
   shippingLoading,
-  deliveryLat,
-  deliveryLong,
   selectedCourier,
 }) {
-  if (!quickEligible) return null;
+  if (!hasAddress) return null;
 
-  const busy = gpsLoading || shippingLoading;
+  const busy = !!shippingLoading;
 
   return (
     <div className="mt-4 bg-white rounded-xl shadow p-4 border border-[#ffecec]">
       <div className="font-semibold mb-1">Delivery option</div>
       <p className="text-xs text-gray-500 mb-3">
-        Quick uses your phone location for same-city delivery. Standard uses
-        nationwide courier rates.
+        Same day delivery is faster local delivery in Delhi based on your
+        pincode. Standard ships across India through our courier partners.
       </p>
+      {!quickEligible && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">
+          Same day delivery isn&apos;t available for this location. Standard
+          shipping is selected.
+        </p>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !quickEligible}
           onClick={() => onSelectMode("quick")}
           className={`text-left rounded-xl border-2 p-3 transition ${
             shippingMode === "quick"
               ? "border-red-500 bg-red-50"
               : "border-gray-200 hover:border-gray-300"
-          } ${busy ? "opacity-60" : ""}`}
+          } ${busy || !quickEligible ? "opacity-60 cursor-not-allowed" : ""}`}
         >
-          <div className="font-semibold text-gray-900">Quick delivery</div>
+          <div className="font-semibold text-gray-900">Same day delivery</div>
           <div className="text-xs text-gray-600 mt-1">
-            Hyperlocal · needs GPS permission
+            Faster local delivery in Delhi, based on your pincode
           </div>
-          {shippingMode === "quick" && Number.isFinite(deliveryLat) && (
-            <div className="text-[11px] text-gray-500 mt-2">
-              Location: {deliveryLat.toFixed(5)}, {Number(deliveryLong).toFixed(5)}
-            </div>
-          )}
         </button>
         <button
           type="button"
@@ -54,7 +53,7 @@ export default function ShippingModeCard({
         >
           <div className="font-semibold text-gray-900">Standard shipping</div>
           <div className="text-xs text-gray-600 mt-1">
-            Nationwide Shiprocket courier
+            Nationwide courier delivery
           </div>
         </button>
       </div>
@@ -68,9 +67,6 @@ export default function ShippingModeCard({
             <> · ₹{Math.ceil(Number(selectedCourier.rate))}</>
           )}
         </div>
-      )}
-      {gpsLoading && (
-        <div className="mt-2 text-xs text-gray-500">Getting your location…</div>
       )}
     </div>
   );

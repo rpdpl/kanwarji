@@ -24,7 +24,6 @@ const CheckoutPage = () => {
   const {
     cart,
     addresses,
-    setAddresses,
     selectedAddressId,
     setSelectedAddressId,
     loading,
@@ -35,7 +34,6 @@ const CheckoutPage = () => {
     cart,
     addresses,
     selectedAddressId,
-    setAddresses,
   });
 
   const addressUi = useCheckoutAddresses({
@@ -118,13 +116,11 @@ const CheckoutPage = () => {
         />
 
         <ShippingModeCard
+          hasAddress={!!selectedAddressId}
           quickEligible={shipping.quickEligible}
           shippingMode={shipping.shippingMode}
           onSelectMode={shipping.selectShippingMode}
-          gpsLoading={shipping.gpsLoading}
           shippingLoading={shipping.shippingLoading}
-          deliveryLat={shipping.deliveryLat}
-          deliveryLong={shipping.deliveryLong}
           selectedCourier={shipping.selectedCourier}
         />
 

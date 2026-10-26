@@ -133,11 +133,23 @@ app.post("/api/shiprocket/shipping-rates", authenticateToken, async (req, res) =
             shiprocket.getPickupPostcode?.() ||
             "110006";
 
+        let dropLat = lat != null ? Number(lat) : NaN;
+        let dropLong = long != null ? Number(long) : NaN;
+
         if (shippingMode === "quick") {
-            if (lat == null || long == null) {
+            if (!Number.isFinite(dropLat) || !Number.isFinite(dropLong)) {
+                const { getPincodeCoords } = require("../utils/pincodeCoords");
+                const fromPin = getPincodeCoords(deliveryPincode);
+                if (fromPin) {
+                    dropLat = fromPin.lat;
+                    dropLong = fromPin.long;
+                }
+            }
+            if (!Number.isFinite(dropLat) || !Number.isFinite(dropLong)) {
                 return res.status(400).json({
                     success: false,
-                    message: "lat and long are required for Quick delivery rates",
+                    message:
+                        "Same day delivery isn't available for this pincode (no drop coordinates)",
                 });
             }
             if (!shiprocket.getPickupCoords?.()) {
@@ -156,8 +168,8 @@ app.post("/api/shiprocket/shipping-rates", authenticateToken, async (req, res) =
             orderValue || 0,
             {
                 mode: shippingMode,
-                lat: Number(lat),
-                long: Number(long),
+                lat: dropLat,
+                long: dropLong,
                 cod: cod === 0 || cod === false ? 0 : 1,
             }
         );

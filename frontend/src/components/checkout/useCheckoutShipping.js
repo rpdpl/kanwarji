@@ -3,10 +3,12 @@ import { toast } from "react-toastify";
 import {
   getShippingRates,
   SHIPROCKET_PICKUP_LOCATION_ID,
-  QUICK_ELIGIBLE_PINCODES,
   calculateBilledWeight,
 } from "../../utils/shiprocketAPI";
-import { updateAddress } from "../../api/addresses";
+import {
+  getPincodeCoords,
+  isPinQuickAvailable,
+} from "../../utils/pincodeCoords";
 import { computeCartWeightKg, computeClientSubtotal } from "./utils";
 
 function pickBestCourier(rates, { preferAir = true } = {}) {
@@ -67,32 +69,10 @@ function etaTextFromCourier(courier) {
   return `in ${days} day${days > 1 ? "s" : ""} (by ${dt.toLocaleDateString("en-IN")})`;
 }
 
-function requestBrowserGps() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Geolocation is not supported in this browser"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        resolve({
-          lat: pos.coords.latitude,
-          long: pos.coords.longitude,
-        });
-      },
-      (err) => {
-        reject(err || new Error("Location permission denied"));
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-    );
-  });
-}
-
 export default function useCheckoutShipping({
   cart,
   addresses,
   selectedAddressId,
-  setAddresses,
 }) {
   const [shippingCharge, setShippingCharge] = useState(0);
   const [selectedCourier, setSelectedCourier] = useState(null);
@@ -105,7 +85,6 @@ export default function useCheckoutShipping({
   const [shippingMode, setShippingMode] = useState("standard"); // quick | standard
   const [deliveryLat, setDeliveryLat] = useState(null);
   const [deliveryLong, setDeliveryLong] = useState(null);
-  const [gpsLoading, setGpsLoading] = useState(false);
   const [warnedQuickPin, setWarnedQuickPin] = useState(
     () => localStorage.getItem("warnedQuickPin") || null
   );
@@ -134,23 +113,40 @@ export default function useCheckoutShipping({
       return;
     }
     const pin = (addr.pincode || "").toString().replace(/\D/g, "").slice(0, 6);
-    const eligible = QUICK_ELIGIBLE_PINCODES.has(pin);
+    const eligible = isPinQuickAvailable(pin);
     setQuickEligible(eligible);
-    if (!eligible) {
-      setShippingMode("standard");
-    } else if (warnedQuickPin !== pin) {
-      setShowQuickIntroModal(true);
-      setWarnedQuickPin(pin);
-      localStorage.setItem("warnedQuickPin", pin);
-    }
-    if (Number.isFinite(Number(addr.latitude)) && Number.isFinite(Number(addr.longitude))) {
-      setDeliveryLat(Number(addr.latitude));
-      setDeliveryLong(Number(addr.longitude));
-    } else if (shippingMode !== "quick") {
+
+    const fromPin = getPincodeCoords(pin);
+    const lat = Number.isFinite(Number(addr.latitude))
+      ? Number(addr.latitude)
+      : fromPin?.lat;
+    const long = Number.isFinite(Number(addr.longitude))
+      ? Number(addr.longitude)
+      : fromPin?.long;
+    if (eligible && Number.isFinite(lat) && Number.isFinite(long)) {
+      setDeliveryLat(lat);
+      setDeliveryLong(long);
+    } else {
       setDeliveryLat(null);
       setDeliveryLong(null);
     }
-  }, [selectedAddressId, addresses, warnedQuickPin, shippingMode]);
+
+    const preferQuick =
+      eligible && addr.preferredShippingMode === "quick";
+
+    if (!eligible) {
+      setShippingMode("standard");
+    } else if (preferQuick) {
+      setShippingMode("quick");
+    } else {
+      setShippingMode("standard");
+      if (eligible && warnedQuickPin !== pin) {
+        setShowQuickIntroModal(true);
+        setWarnedQuickPin(pin);
+        localStorage.setItem("warnedQuickPin", pin);
+      }
+    }
+  }, [selectedAddressId, addresses, warnedQuickPin]);
 
   const applyCourierResult = (courier, mode) => {
     if (!courier) {
@@ -206,7 +202,7 @@ export default function useCheckoutShipping({
       { mode: "quick", lat, long }
     );
     if (!res.success) {
-      throw new Error(res.error || res.message || "Quick rates unavailable");
+      throw new Error(res.error || res.message || "Same day delivery rates unavailable");
     }
     const allRates =
       res.available_courier_companies_vg ||
@@ -216,7 +212,7 @@ export default function useCheckoutShipping({
       [];
     const best = pickBestCourier(allRates, { preferAir: false });
     if (!best) {
-      throw new Error("No Quick couriers available for your location");
+      throw new Error("Same day delivery is not available for your location");
     }
     setShippingError("");
     applyCourierResult(best, "quick");
@@ -229,55 +225,36 @@ export default function useCheckoutShipping({
 
     if (mode === "quick") {
       if (!quickEligible) {
-        toast.info("Quick delivery is only available in Delhi / NCR");
+        toast.info("Same day delivery isn't available for this location");
         return;
       }
-      setGpsLoading(true);
+      const fromPin = getPincodeCoords(pin);
+      const lat = Number.isFinite(Number(addr.latitude))
+        ? Number(addr.latitude)
+        : fromPin?.lat;
+      const long = Number.isFinite(Number(addr.longitude))
+        ? Number(addr.longitude)
+        : fromPin?.long;
+      if (!Number.isFinite(lat) || !Number.isFinite(long)) {
+        toast.warning(
+          "Same day delivery isn't available for this location. Using Standard shipping."
+        );
+        setShippingMode("standard");
+        return;
+      }
       setShippingLoading(true);
       setShippingError("");
+      setDeliveryLat(lat);
+      setDeliveryLong(long);
       try {
-        let lat = deliveryLat;
-        let long = deliveryLong;
-        if (!Number.isFinite(lat) || !Number.isFinite(long)) {
-          const gps = await requestBrowserGps();
-          lat = gps.lat;
-          long = gps.long;
-          setDeliveryLat(lat);
-          setDeliveryLong(long);
-          try {
-            const updated = await updateAddress(addr._id, {
-              title: addr.title,
-              name: addr.name,
-              phone: addr.phone,
-              address: addr.address,
-              city: addr.city,
-              state: addr.state,
-              pincode: addr.pincode,
-              isDefault: !!addr.isDefault,
-              latitude: lat,
-              longitude: long,
-            });
-            if (updated?.data?.address && typeof setAddresses === "function") {
-              setAddresses((prev) =>
-                prev.map((a) =>
-                  a._id === addr._id ? { ...a, ...updated.data.address } : a
-                )
-              );
-            }
-          } catch (_) {
-            /* non-fatal: coords still used for this checkout */
-          }
-        }
         await fetchQuickRates(pin, lat, long);
-        toast.success("Quick delivery rates loaded");
+        toast.success("Same day delivery rates loaded");
       } catch (e) {
         console.error(e);
-        const msg =
-          e?.code === 1 || /denied|permission/i.test(String(e?.message || e))
-            ? "Location permission is required for Quick delivery. Switched to Standard shipping."
-            : e?.message ||
-              "Quick delivery unavailable. Switched to Standard shipping.";
-        toast.warning(msg);
+        toast.warning(
+          e?.message ||
+            "Same day delivery unavailable. Switched to Standard shipping."
+        );
         setShippingMode("standard");
         try {
           await fetchStandardRates(pin);
@@ -286,7 +263,6 @@ export default function useCheckoutShipping({
           applyCourierResult(null, "standard");
         }
       } finally {
-        setGpsLoading(false);
         setShippingLoading(false);
       }
       return;
@@ -326,15 +302,15 @@ export default function useCheckoutShipping({
       try {
         if (
           shippingMode === "quick" &&
-          QUICK_ELIGIBLE_PINCODES.has(pin) &&
+          isPinQuickAvailable(pin) &&
           Number.isFinite(deliveryLat) &&
           Number.isFinite(deliveryLong)
         ) {
           await fetchQuickRates(pin, deliveryLat, deliveryLong);
         } else {
           if (shippingMode === "quick") {
-            // waiting for GPS / user selection — don't hard-fail
-            setShippingCharge(0);
+            setShippingMode("standard");
+            await fetchStandardRates(pin);
           } else {
             await fetchStandardRates(pin);
           }
@@ -343,7 +319,7 @@ export default function useCheckoutShipping({
         console.error("Shipping calc error", e);
         if (shippingMode === "quick") {
           toast.warning(
-            "Quick delivery unavailable. Falling back to Standard shipping."
+            "Same day delivery unavailable. Falling back to Standard shipping."
           );
           setShippingMode("standard");
           try {
@@ -394,7 +370,6 @@ export default function useCheckoutShipping({
     selectShippingMode,
     deliveryLat,
     deliveryLong,
-    gpsLoading,
     clientSubtotal,
   };
 }
