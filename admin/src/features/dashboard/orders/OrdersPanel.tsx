@@ -139,7 +139,7 @@ export function OrdersPanel({
                                     className="border-red-300 text-xs sm:text-sm text-red-800 bg-red-50"
                                     title={order.shiprocketError || "Shipment creation failed"}
                                   >
-                                    Shipment failed — retry
+                                    Shipment failed - retry
                                   </Badge>
                                 )}
 
@@ -206,13 +206,13 @@ export function OrdersPanel({
                                 <div className="text-gray-600 text-xs sm:text-sm mt-1">
                                   Payment: <span className="font-medium">{order.paymentMethod.toUpperCase()}</span>
                                   {order.paymentMethod === "cod" && order.paymentStatus === "pending" && (
-                                    <span className="ml-1 text-orange-600">(COD — collect on delivery)</span>
+                                    <span className="ml-1 text-orange-600">(COD - collect on delivery)</span>
                                   )}
                                 </div>
                                 <div className="text-gray-600 text-xs sm:text-sm mt-2 border-t border-gray-100 pt-2">
                                   <div className="font-medium text-gray-700 mb-1">Shiprocket</div>
                                   {order.isLocalShiprocket && !order.shippingMode ? (
-                                    <div className="text-blue-700">Local NCR (skipped) — legacy</div>
+                                    <div className="text-blue-700">Local NCR (skipped) - legacy</div>
                                   ) : (
                                     <>
                                       <div>
@@ -248,7 +248,7 @@ export function OrdersPanel({
                                           {order.courierName ||
                                             (order.shippingMode === "quick"
                                               ? "Same day delivery"
-                                              : "—")}
+                                              : "Not assigned")}
                                         </span>
                                         {order.courierCompanyId
                                           ? ` · id ${order.courierCompanyId}`
@@ -282,11 +282,11 @@ export function OrdersPanel({
                                       <div>
                                         Status:{" "}
                                         <span className="font-medium">
-                                          {order.shipmentStatus || "—"}
+                                          {order.shipmentStatus || "Pending"}
                                         </span>
                                       </div>
                                       <div className="truncate">
-                                        SR ID: {order.shiprocketOrderId || "—"}
+                                        SR ID: {order.shiprocketOrderId || "Not created"}
                                       </div>
                                       {order.awbNumber && (
                                         <div>AWB: {order.awbNumber}</div>

@@ -19,6 +19,7 @@ const {
   isInstamojoClientError,
   validateInstamojoBuyer,
 } = require("../utils/instamojoErrors");
+const { formatInstamojoPurpose } = require("../utils/orderShippingSummary");
 const env = require("../config/env");
 
 const SERVER_BASE_URL = env.SERVER_BASE_URL;
@@ -157,7 +158,7 @@ module.exports = function registerPaymentsRoutes(app) {
           : phoneDigits;
 
       const payload = {
-        purpose: `Order ${order.orderId}`,
+        purpose: formatInstamojoPurpose(order),
         amount: amountForInstamojo,
         buyer_name: order.address?.name || user?.name || "Customer",
         email: buyerEmail,

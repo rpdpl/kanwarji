@@ -176,7 +176,40 @@ export async function downloadInvoice(order: Order, setError: (msg: string) => v
         doc.text('Status:', leftMargin + 5, yPos)
         doc.setFont('helvetica', 'normal')
         doc.text(`${invoiceData.order.paymentStatus.toUpperCase()} / ${invoiceData.order.orderStatus.toUpperCase()}`, leftMargin + 40, yPos)
-        yPos += 15
+        yPos += 7
+
+        const shippingSummary =
+          invoiceData.order.shippingSummary ||
+          [
+            invoiceData.order.shippingModeLabel,
+            invoiceData.order.courierName,
+            invoiceData.order.courierEtd,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        const shippingFee = Number(
+          invoiceData.order.courierRate ??
+            invoiceData.order.shiprocketFee ??
+            invoiceData.order.deliveryFee ??
+            0
+        )
+        if (shippingSummary || shippingFee > 0) {
+          doc.setFont('helvetica', 'bold')
+          doc.text('Shipping:', leftMargin + 5, yPos)
+          doc.setFont('helvetica', 'normal')
+          const shipLines = doc.splitTextToSize(
+            [
+              shippingSummary || null,
+              shippingFee > 0 ? `Fee: Rs ${shippingFee.toFixed(2)}` : null,
+            ]
+              .filter(Boolean)
+              .join(" | "),
+            contentWidth - 45
+          )
+          doc.text(shipLines as any, leftMargin + 40, yPos)
+          yPos += 7 * (Array.isArray(shipLines) ? shipLines.length : 1)
+        }
+        yPos += 8
 
         // Special Requests
         if (order.specialRequests) {

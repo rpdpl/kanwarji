@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const env = require("../src/config/env");
+const { formatShippingSummary } = require("../src/utils/orderShippingSummary");
 
 const transporter = nodemailer.createTransport({
   service: env.EMAIL_SERVICE || "gmail",
@@ -137,12 +138,18 @@ async function sendPaymentSuccessEmail(user, order) {
     <span>Subtotal:</span> <strong>₹${Number(order.subtotal || 0).toFixed(2)}</strong>
   </p>
   ${order.taxAmount ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Tax:</span> <strong>₹${Number(order.taxAmount || 0).toFixed(2)}</strong></p>` : ""}
-  ${order.shiprocketFee ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Shiprocket Fee:</span> <strong>₹${Number(order.shiprocketFee || 0).toFixed(2)}</strong></p>` : ""}
+  ${order.shiprocketFee ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Shipping fee:</span> <strong>₹${Number(order.shiprocketFee || 0).toFixed(2)}</strong></p>` : ""}
  ${order.convenienceFee ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Convenience Fee:</span> <strong>₹${(Number(order.convenienceFee || 0) * 1.18).toFixed(2)}</strong></p>` : ""}
   <p style="margin: 12px 0 0 0; padding-top: 12px; border-top: 2px solid #ddd; color: #333; font-size: 16px; display: flex; justify-content: space-between;">
     <span><strong>Total Paid:</strong></span> <strong style="color: #4CAF50;">₹${(Number(order.totalAmount || 0) + Number(order.convenienceFee || 0) * 1.18).toFixed(2)}</strong>
   </p>
 </div>
+
+          ${formatShippingSummary(order) ? `
+          <div style="background-color: #fff8e1; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffb300;">
+            <h3 style="margin: 0 0 8px 0; color: #333; font-size: 16px;">Shipping</h3>
+            <p style="margin: 0; color: #666; font-size: 14px;">${formatShippingSummary(order)}</p>
+          </div>` : ""}
 
           <!-- What's Next -->
           <div style="background-color: #e8f5e9; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4CAF50;">
@@ -151,9 +158,9 @@ async function sendPaymentSuccessEmail(user, order) {
             <p style="margin: 8px 0; color: #333; font-size: 14px;">✓ You will receive tracking information once your order ships</p>
           </div>
 
-          <!-- Shiprocket Address -->
+          <!-- Delivery Address -->
           <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-            <h3 style="margin: 0 0 12px 0; color: #1565c0; font-size: 16px;">Shiprocket Address</h3>
+            <h3 style="margin: 0 0 12px 0; color: #1565c0; font-size: 16px;">Delivery Address</h3>
             <p style="margin: 8px 0; color: #333; font-size: 14px;">
               <strong>${order.address.name}</strong><br>
               ${order.address.phone}<br>
@@ -206,18 +213,19 @@ async function sendOrderConfirmationEmail(user, order) {
           <p><strong>Order ID:</strong> ${order.orderId}</p>
           <p><strong>Total Amount:</strong>  ₹${order.totalAmount}</p>
           <p><strong>Payment Method:</strong> ${order.paymentMethod === "cod"
-                ? "Cash on Shiprocket"
+                ? "Cash on Delivery"
                 : "Online Payment"
             }</p>
           <p><strong>Payment Status:</strong> ${order.paymentStatus}</p>
-          <p><strong>Estimated Shiprocket:</strong> ${order.estimatedShiprocket.toDateString()}</p>
+          ${formatShippingSummary(order) ? `<p><strong>Shipping:</strong> ${formatShippingSummary(order)}</p>` : ""}
+          ${order.estimatedShiprocket ? `<p><strong>Estimated delivery:</strong> ${new Date(order.estimatedShiprocket).toDateString()}</p>` : ""}
         </div>
         <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <h3>Items Ordered</h3>
           <ul>${itemsList}</ul>
         </div>
         <div style="background-color: #f0f8ff; padding: 15px; margin: 20px 0; border-radius: 5px;">
-          <h3>Shiprocket Address</h3>
+          <h3>Delivery Address</h3>
           <p>${order.address.name}<br>
           ${order.address.phone}<br>
           ${order.address.address}<br>
@@ -305,7 +313,7 @@ async function sendOrderCancellationEmail(user, order, cancellationReason) {
     <span>Subtotal:</span> <strong>₹${Number(order.subtotal || 0).toFixed(2)}</strong>
   </p>
   ${order.taxAmount ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Tax:</span> <strong>₹${Number(order.taxAmount || 0).toFixed(2)}</strong></p>` : ""}
-  ${order.shiprocketFee ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Shiprocket Fee:</span> <strong>₹${Number(order.shiprocketFee || 0).toFixed(2)}</strong></p>` : ""}
+  ${order.shiprocketFee ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Shipping fee:</span> <strong>₹${Number(order.shiprocketFee || 0).toFixed(2)}</strong></p>` : ""}
  ${order.convenienceFee ? `<p style="margin: 8px 0; color: #666; font-size: 14px; display: flex; justify-content: space-between;"><span>Convenience Fee:</span> <strong>₹${(Number(order.convenienceFee || 0) * 1.18).toFixed(2)}</strong></p>` : ""}
   <p style="margin: 12px 0 0 0; padding-top: 12px; border-top: 2px solid #ddd; color: #333; font-size: 16px; display: flex; justify-content: space-between;">
     <span><strong>Total:</strong></span> <strong style="color: #d32f2f;">₹${(Number(order.totalAmount || 0) + Number(order.convenienceFee || 0) * 1.18).toFixed(2)}</strong>

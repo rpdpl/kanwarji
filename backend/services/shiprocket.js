@@ -178,6 +178,8 @@ async function createShiprocketOrder(orderData = {}) {
     billing_last_name: lastName,
     billing_address:
       orderData.billingAddress || orderData.billing_address || "Address",
+    billing_address_2:
+      orderData.billingAddress2 || orderData.billing_address_2 || undefined,
     billing_city: orderData.billingCity || orderData.billing_city || "City",
     billing_pincode: String(
       orderData.billingPincode || orderData.billing_pincode || ""

@@ -551,6 +551,44 @@ const Profile = () => {
                                 </a>
                               )}
                             </div>
+
+                            {(order.shippingMode ||
+                              order.requestedShippingMode ||
+                              order.courierName ||
+                              order.courierEtd ||
+                              order.shiprocketFee) && (
+                              <div className="mt-3 text-xs text-neutral-600 space-y-1 bg-neutral-50 rounded-lg p-3">
+                                <div>
+                                  <span className="font-semibold text-neutral-700">Shipping: </span>
+                                  {order.shippingMode === "quick" ||
+                                  order.requestedShippingMode === "quick"
+                                    ? "Same day (Quick)"
+                                    : "Standard"}
+                                  {order.courierName ? ` · ${order.courierName}` : ""}
+                                </div>
+                                {(Number(order.courierRate || order.shiprocketFee) > 0 ||
+                                  order.courierEtd) && (
+                                  <div>
+                                    {Number(order.courierRate || order.shiprocketFee) > 0 && (
+                                      <span>
+                                        Fee: ₹
+                                        {Number(
+                                          order.courierRate || order.shiprocketFee || 0
+                                        ).toFixed(2)}
+                                      </span>
+                                    )}
+                                    {order.courierEtd && (
+                                      <span>
+                                        {Number(order.courierRate || order.shiprocketFee) > 0
+                                          ? " · "
+                                          : ""}
+                                        ETA: {order.courierEtd}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <div className="p-5">

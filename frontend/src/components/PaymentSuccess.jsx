@@ -41,6 +41,15 @@ const PaymentSuccess = () => {
 
         const order = res.data.order;
 
+        const shippingMode =
+          order.shippingMode === "quick"
+            ? "Same day (Quick)"
+            : order.shippingMode === "standard"
+              ? "Standard"
+              : order.requestedShippingMode === "quick"
+                ? "Same day (Quick)"
+                : "Standard";
+
         setOrderDetails({
           orderId: order.orderId,
           subtotal: Number(order.subtotal || 0),
@@ -51,6 +60,10 @@ const PaymentSuccess = () => {
           paymentMethod: order.paymentMethod,
           items: order.items || [],
           paidAt: order.paidAt || order.updatedAt || order.createdAt,
+          shippingMode,
+          courierName: order.courierName || "",
+          courierEtd: order.courierEtd || "",
+          courierRate: Number(order.courierRate || order.shiprocketFee || 0),
         });
 
         try {
@@ -242,6 +255,34 @@ const PaymentSuccess = () => {
                       : orderDetails.paymentMethod}
                   </span>
                 </div>
+                {(orderDetails.shippingMode ||
+                  orderDetails.courierName ||
+                  orderDetails.courierEtd) && (
+                  <div className="mt-3 border-t pt-3 space-y-2">
+                    {orderDetails.shippingMode && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Shipping:</span>
+                        <span className="font-semibold">{orderDetails.shippingMode}</span>
+                      </div>
+                    )}
+                    {orderDetails.courierName && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Courier:</span>
+                        <span className="font-semibold text-right max-w-[60%]">
+                          {orderDetails.courierName}
+                        </span>
+                      </div>
+                    )}
+                    {orderDetails.courierEtd && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">ETA:</span>
+                        <span className="font-semibold text-right max-w-[60%]">
+                          {orderDetails.courierEtd}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* Cost Breakdown */}
                 <div className="mt-3 border-t pt-3 space-y-2">
                   <div className="flex justify-between text-sm">

@@ -1,4 +1,5 @@
 const shiprocket = require("../../services/shiprocket");
+const { formatShippingSummary } = require("./orderShippingSummary");
 
 function makeUniqueSkuFactory() {
   const skuCountMap = new Map();
@@ -25,12 +26,20 @@ function buildCreatePayload(order, userEmail, mode, orderIdOverride) {
   const paymentMethod =
     order.paymentMethod === "cod" ? "COD" : "Prepaid";
 
+  // Ops note for Shiprocket UI only when address line 2 is empty (do not overwrite real address_2)
+  const existingAddr2 = String(
+    order.address?.address2 || order.address?.address_2 || ""
+  ).trim();
+  const shippingNote = formatShippingSummary({ ...order, shippingMode: mode });
+  const billingAddress2 = existingAddr2 || (shippingNote ? `Ship: ${shippingNote}` : undefined);
+
   return {
     orderId: orderIdOverride || order.orderId,
     billingCustomerName: order.address?.name || "Customer",
     billingEmail: userEmail || "customer@example.com",
     billingPhone: order.address?.phone || "9999999999",
     billingAddress: order.address?.address || "Address not provided",
+    billingAddress2,
     billingCity: order.address?.city || "Delhi",
     billingPincode: order.address?.pincode || "110006",
     billingState: order.address?.state || "Delhi",

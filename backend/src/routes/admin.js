@@ -1445,16 +1445,21 @@ app.get(
                 });
             }
 
+            const {
+                formatShippingSummary,
+                getShippingModeLabel,
+            } = require("../utils/orderShippingSummary");
+
             // Return structured invoice data
             const invoiceData = {
                 // Company Details
                 company: {
-                    name: "Your Company Name",
-                    address: "123 Business Street",
-                    city: "Business City, State 12345",
-                    phone: "+1 (555) 123-4567",
-                    email: "info@yourcompany.com",
-                    website: "www.yourcompany.com",
+                    name: "Kanwarji Bhagirath Mal",
+                    address: "1972, Chandni Chowk",
+                    city: "Delhi- 110006. Delhi. Bharat (India)",
+                    phone: "+91-9811049585",
+                    email: "kanwarji@rpdindia.com",
+                    website: "https://kanwarji.in",
                 },
 
                 // Invoice Details
@@ -1499,6 +1504,14 @@ app.get(
                     orderStatus: order.orderStatus,
                     createdAt: order.createdAt,
                     estimatedShiprocket: order.estimatedShiprocket,
+                    shippingMode: order.shippingMode,
+                    requestedShippingMode: order.requestedShippingMode,
+                    courierName: order.courierName,
+                    courierCompanyId: order.courierCompanyId,
+                    courierRate: order.courierRate,
+                    courierEtd: order.courierEtd,
+                    shippingModeLabel: getShippingModeLabel(order),
+                    shippingSummary: formatShippingSummary(order),
                 },
             };
 
