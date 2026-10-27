@@ -1,8 +1,11 @@
 const {
   resolvePreferredShippingMode,
 } = require("../../src/utils/ncrBounds");
-const { isQuickEligiblePincode } = require("../../src/utils/quickEligiblePincodes");
-const { getPincodeCoords } = require("../../src/utils/pincodeCoords");
+const {
+  isQuickEligiblePincode,
+  QUICK_ELIGIBLE_PINCODES,
+} = require("../../src/utils/quickEligiblePincodes");
+const { getPincodeCoords, PINCODE_COORDS } = require("../../src/utils/pincodeCoords");
 
 describe("pin coords + quick shipping mode", () => {
   it("treats 110006 as Quick-eligible and 400001 as not", () => {
@@ -16,8 +19,14 @@ describe("pin coords + quick shipping mode", () => {
   });
 
   it("returns null for pins without coords", () => {
-    expect(getPincodeCoords("201301")).toBeNull();
+    expect(getPincodeCoords("110050")).toBeNull();
     expect(getPincodeCoords("400001")).toBeNull();
+  });
+
+  it("has coords for exactly the Quick-eligible pin list", () => {
+    const eligible = [...QUICK_ELIGIBLE_PINCODES].sort();
+    expect(Object.keys(PINCODE_COORDS).sort()).toEqual(eligible);
+    expect(eligible).toHaveLength(157);
   });
 
   it("keeps Quick and attaches pin coords when pin has a centroid", () => {
@@ -39,8 +48,8 @@ describe("pin coords + quick shipping mode", () => {
       longitude: 72.87,
     });
     expect(r.preferredShippingMode).toBe("quick");
-    expect(r.latitude).toBe(28.6419);
-    expect(r.longitude).toBe(77.2176);
+    expect(r.latitude).toBe(28.63);
+    expect(r.longitude).toBe(77.217);
   });
 
   it("coerces to Standard when pin is outside Quick list", () => {
@@ -53,13 +62,14 @@ describe("pin coords + quick shipping mode", () => {
     expect(r.message).toMatch(/Standard/i);
   });
 
-  it("coerces to Standard when pin is eligible but has no coords (e.g. Noida)", () => {
+  it("keeps Quick for NCR pins outside Delhi (e.g. Noida)", () => {
     const r = resolvePreferredShippingMode({
       preferredShippingMode: "quick",
       pincode: "201301",
     });
-    expect(isQuickEligiblePincode("201301")).toBe(true);
-    expect(r.preferredShippingMode).toBe("standard");
-    expect(r.coerced).toBe(true);
+    expect(r.preferredShippingMode).toBe("quick");
+    expect(r.coerced).toBe(false);
+    expect(r.latitude).toBe(28.5792);
+    expect(r.longitude).toBe(77.3242);
   });
 });

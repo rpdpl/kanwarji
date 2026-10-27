@@ -18,9 +18,17 @@ export default function useCheckoutData() {
     if (addrRes.data.success) {
       const list = addrRes.data.addresses || [];
       setAddresses(list);
-      if (list.length) {
-        setSelectedAddressId((prev) => prev || list[0]._id);
-      }
+      const preferred =
+        list.find((a) => a.isDefault) || list[0] || null;
+      setSelectedAddressId((prev) => {
+        if (
+          prev &&
+          list.some((a) => String(a._id) === String(prev))
+        ) {
+          return prev;
+        }
+        return preferred?._id ?? null;
+      });
     }
   }, []);
 

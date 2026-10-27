@@ -76,6 +76,9 @@ const orderSchema = new mongoose.Schema({
   deliveryLong: { type: Number },
   courierCompanyId: { type: String },
   courierName: { type: String },
+  courierRate: { type: Number },
+  courierEtd: { type: String },
+
   cancelledAt: { type: Date },
   paidAt: { type: Date },
   refundedAt: { type: Date },

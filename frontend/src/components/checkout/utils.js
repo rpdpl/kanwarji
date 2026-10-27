@@ -1,5 +1,3 @@
-import { isPinQuickAvailable } from "../../utils/pincodeCoords";
-
 export const emptyAddr = {
   title: "",
   name: "",
@@ -9,7 +7,6 @@ export const emptyAddr = {
   state: "",
   pincode: "",
   isDefault: false,
-  preferredShippingMode: "standard",
 };
 
 export const parseUnitToKg = (raw) => {
@@ -128,12 +125,6 @@ export const validateAddressForm = (form) => {
   if (!stateOk)
     return { ok: false, error: "State must be at least 3 characters" };
 
-  let preferredShippingMode =
-    form.preferredShippingMode === "quick" ? "quick" : "standard";
-  if (preferredShippingMode === "quick" && !isPinQuickAvailable(pincodeDigits)) {
-    preferredShippingMode = "standard";
-  }
-
   return {
     ok: true,
     normalized: {
@@ -145,7 +136,7 @@ export const validateAddressForm = (form) => {
       state: String(form.state || "").trim(),
       pincode: pincodeDigits,
       isDefault: !!form.isDefault,
-      preferredShippingMode,
+      preferredShippingMode: "standard",
     },
   };
 };

@@ -89,14 +89,15 @@ const PaymentSuccess = () => {
             if (rates?.success && rates?.data) {
               const allRates = rates.data.available_courier_companies_vg || rates.data.data?.available_courier_companies_vg || rates.data.data?.available_courier_companies || [];
               const airRates = (allRates || []).filter((c) => (c?.is_surface === false) || Number(c?.mode) === 1 || /air|express|speed post/i.test(String(c.courier_name || "")));
-              if (airRates.length) {
-                const fastest = airRates.reduce((best, cur) => {
+              const pickFrom = airRates.length ? airRates : (allRates || []);
+              if (pickFrom.length) {
+                const fastest = pickFrom.reduce((best, cur) => {
                   const be = Number((best?.etd_hours ?? (best?.estimated_delivery_days != null ? Number(best.estimated_delivery_days) * 24 : undefined))) || Number.POSITIVE_INFINITY;
                   const ce = Number((cur?.etd_hours ?? (cur?.estimated_delivery_days != null ? Number(cur.estimated_delivery_days) * 24 : undefined))) || Number.POSITIVE_INFINITY;
                   if (ce < be) return cur;
                   if (ce > be) return best;
                   return (Number(cur?.rate) < Number(best?.rate)) ? cur : best;
-                }, airRates[0]);
+                }, pickFrom[0]);
                 const etaHours = Number(fastest?.etd_hours ?? (fastest?.estimated_delivery_days != null ? Number(fastest.estimated_delivery_days) * 24 : NaN));
                 if (Number.isFinite(etaHours)) {
                   if (etaHours < 24) setExpectedEtaText("within 24 hours");

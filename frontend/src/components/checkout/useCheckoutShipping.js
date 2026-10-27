@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
-import { toast } from "react-toastify";
 import {
   getShippingRates,
   SHIPROCKET_PICKUP_LOCATION_ID,
   calculateBilledWeight,
 } from "../../utils/shiprocketAPI";
-import {
-  getPincodeCoords,
-  isPinQuickAvailable,
-} from "../../utils/pincodeCoords";
+import { getPincodeCoords } from "../../utils/pincodeCoords";
 import { computeCartWeightKg, computeClientSubtotal } from "./utils";
 
 function pickBestCourier(rates, { preferAir = true } = {}) {
@@ -69,6 +65,54 @@ function etaTextFromCourier(courier) {
   return `in ${days} day${days > 1 ? "s" : ""} (by ${dt.toLocaleDateString("en-IN")})`;
 }
 
+function extractCouriers(res) {
+  return (
+    res?.available_courier_companies_vg ||
+    res?.data?.available_courier_companies_vg ||
+    res?.data?.data?.available_courier_companies ||
+    res?.data?.available_courier_companies ||
+    []
+  );
+}
+
+function courierRate(c) {
+  return Math.ceil(Number(c?.rate ?? c?.rates ?? c?.freight_charge) || 0);
+}
+
+function sortByRateAsc(list) {
+  return [...list].sort((a, b) => courierRate(a) - courierRate(b));
+}
+
+function optionId(mode, courier, index) {
+  const cid =
+    courier?.courier_company_id ?? courier?.id ?? courier?.courier_id ?? index;
+  return `${mode}-${cid}`;
+}
+
+function toOption(courier, mode, index, coords = null) {
+  const rate = courierRate(courier);
+  const eta = etaTextFromCourier(courier);
+  const name =
+    mode === "quick"
+      ? "Same day delivery"
+      : String(courier?.courier_name || "Courier");
+  return {
+    id: optionId(mode, courier, index),
+    mode,
+    label: name,
+    rate,
+    eta,
+    courier,
+    deliveryLat: coords?.lat ?? null,
+    deliveryLong: coords?.long ?? null,
+  };
+}
+
+function sameId(a, b) {
+  if (a == null || b == null) return false;
+  return String(a) === String(b);
+}
+
 export default function useCheckoutShipping({
   cart,
   addresses,
@@ -76,298 +120,232 @@ export default function useCheckoutShipping({
 }) {
   const [shippingCharge, setShippingCharge] = useState(0);
   const [selectedCourier, setSelectedCourier] = useState(null);
+  const [selectedOptionId, setSelectedOptionId] = useState(null);
+  const [shippingOptions, setShippingOptions] = useState([]);
   const [expectedEtaText, setExpectedEtaText] = useState("");
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState("");
-  const [weight, setWeight] = useState(0);
-  const [showQuickIntroModal, setShowQuickIntroModal] = useState(false);
-  const [quickEligible, setQuickEligible] = useState(false);
-  const [shippingMode, setShippingMode] = useState("standard"); // quick | standard
+  const [shippingMode, setShippingMode] = useState("standard");
   const [deliveryLat, setDeliveryLat] = useState(null);
   const [deliveryLong, setDeliveryLong] = useState(null);
-  const [warnedQuickPin, setWarnedQuickPin] = useState(
-    () => localStorage.getItem("warnedQuickPin") || null
-  );
 
-  // legacy aliases used by older checkout UI
-  const isLocalDelivery = quickEligible;
-  const showLocalDeliveryModal = showQuickIntroModal;
-  const setShowLocalDeliveryModal = setShowQuickIntroModal;
+  const cartItems = cart?.cartItems || [];
+  const needsAddress = !selectedAddressId;
+  const clientSubtotal = computeClientSubtotal(cartItems);
+  // Derive weight during render so address auto-select and rates fetch
+  // share the same turn (no lagged weight state race on first load).
+  const rawWeightKg = computeCartWeightKg(cartItems);
+  const weight =
+    calculateBilledWeight(rawWeightKg) ||
+    (cartItems.length > 0 ? 0.5 : 0);
 
-  const clientSubtotal = computeClientSubtotal(cart.cartItems || []);
+  const selectedAddress =
+    (addresses || []).find((a) => sameId(a._id, selectedAddressId)) || null;
+  const pin = (selectedAddress?.pincode || "")
+    .toString()
+    .replace(/\D/g, "")
+    .slice(0, 6);
+  const addressLat = Number(selectedAddress?.latitude);
+  const addressLong = Number(selectedAddress?.longitude);
 
-  useEffect(() => {
-    const billedWeight = calculateBilledWeight(
-      computeCartWeightKg(cart.cartItems || [])
-    );
-    setWeight(billedWeight);
-  }, [cart.cartItems]);
+  const clearShipping = () => {
+    setShippingOptions([]);
+    setShippingCharge(0);
+    setShippingError("");
+    setShippingLoading(false);
+    setSelectedCourier(null);
+    setSelectedOptionId(null);
+    setExpectedEtaText("");
+    setShippingMode("standard");
+    setDeliveryLat(null);
+    setDeliveryLong(null);
+  };
 
-  useEffect(() => {
-    const addr = addresses.find((a) => a._id === selectedAddressId);
-    if (!addr) {
-      setQuickEligible(false);
-      setShippingMode("standard");
-      setDeliveryLat(null);
-      setDeliveryLong(null);
-      return;
-    }
-    const pin = (addr.pincode || "").toString().replace(/\D/g, "").slice(0, 6);
-    const eligible = isPinQuickAvailable(pin);
-    setQuickEligible(eligible);
-
-    const fromPin = getPincodeCoords(pin);
-    const lat = Number.isFinite(Number(addr.latitude))
-      ? Number(addr.latitude)
-      : fromPin?.lat;
-    const long = Number.isFinite(Number(addr.longitude))
-      ? Number(addr.longitude)
-      : fromPin?.long;
-    if (eligible && Number.isFinite(lat) && Number.isFinite(long)) {
-      setDeliveryLat(lat);
-      setDeliveryLong(long);
-    } else {
-      setDeliveryLat(null);
-      setDeliveryLong(null);
-    }
-
-    const preferQuick =
-      eligible && addr.preferredShippingMode === "quick";
-
-    if (!eligible) {
-      setShippingMode("standard");
-    } else if (preferQuick) {
-      setShippingMode("quick");
-    } else {
-      setShippingMode("standard");
-      if (eligible && warnedQuickPin !== pin) {
-        setShowQuickIntroModal(true);
-        setWarnedQuickPin(pin);
-        localStorage.setItem("warnedQuickPin", pin);
-      }
-    }
-  }, [selectedAddressId, addresses, warnedQuickPin]);
-
-  const applyCourierResult = (courier, mode) => {
-    if (!courier) {
+  const applyOption = (option) => {
+    if (!option) {
       setShippingCharge(0);
       setSelectedCourier(null);
+      setSelectedOptionId(null);
       setExpectedEtaText("");
-      return false;
-    }
-    setShippingCharge(
-      Math.ceil(Number(courier.rate ?? courier.rates ?? courier.freight_charge) || 0)
-    );
-    setSelectedCourier(courier);
-    setExpectedEtaText(etaTextFromCourier(courier));
-    setShippingMode(mode);
-    return true;
-  };
-
-  const fetchStandardRates = async (pin) => {
-    const res = await getShippingRates(
-      SHIPROCKET_PICKUP_LOCATION_ID,
-      pin,
-      weight,
-      clientSubtotal,
-      { mode: "standard" }
-    );
-    if (!res.success) {
-      throw new Error(res.error || res.message || "Failed to fetch rates");
-    }
-    const allRates =
-      res.available_courier_companies_vg ||
-      res.data?.available_courier_companies_vg ||
-      res.data?.data?.available_courier_companies ||
-      res.data?.available_courier_companies ||
-      [];
-    const best = pickBestCourier(allRates, { preferAir: true });
-    if (!best) {
-      setShippingError(
-        "No suitable couriers available for this route. Please try a different address."
-      );
-      applyCourierResult(null, "standard");
+      setShippingMode("standard");
+      setDeliveryLat(null);
+      setDeliveryLong(null);
       return;
     }
-    setShippingError("");
-    applyCourierResult(best, "standard");
+    setSelectedOptionId(option.id);
+    setSelectedCourier(option.courier);
+    setShippingCharge(option.rate);
+    setExpectedEtaText(option.eta || "");
+    setShippingMode(option.mode === "quick" ? "quick" : "standard");
+    if (option.mode === "quick") {
+      setDeliveryLat(option.deliveryLat);
+      setDeliveryLong(option.deliveryLong);
+    } else {
+      setDeliveryLat(null);
+      setDeliveryLong(null);
+    }
   };
 
-  const fetchQuickRates = async (pin, lat, long) => {
-    const res = await getShippingRates(
-      SHIPROCKET_PICKUP_LOCATION_ID,
-      pin,
-      weight,
-      clientSubtotal,
-      { mode: "quick", lat, long }
-    );
-    if (!res.success) {
-      throw new Error(res.error || res.message || "Same day delivery rates unavailable");
-    }
-    const allRates =
-      res.available_courier_companies_vg ||
-      res.data?.available_courier_companies_vg ||
-      res.data?.data?.available_courier_companies ||
-      res.data?.available_courier_companies ||
-      [];
-    const best = pickBestCourier(allRates, { preferAir: false });
-    if (!best) {
-      throw new Error("Same day delivery is not available for your location");
-    }
-    setShippingError("");
-    applyCourierResult(best, "quick");
+  const selectShippingOption = (option) => {
+    if (!option || needsAddress || shippingLoading) return;
+    applyOption(option);
   };
 
-  const selectShippingMode = async (mode) => {
-    const addr = addresses.find((a) => a._id === selectedAddressId);
-    if (!addr) return;
-    const pin = (addr.pincode || "").toString().replace(/\D/g, "").slice(0, 6);
+  useEffect(() => {
+    if (!selectedAddressId) {
+      clearShipping();
+      return;
+    }
 
-    if (mode === "quick") {
-      if (!quickEligible) {
-        toast.info("Same day delivery isn't available for this location");
-        return;
-      }
-      const fromPin = getPincodeCoords(pin);
-      const lat = Number.isFinite(Number(addr.latitude))
-        ? Number(addr.latitude)
-        : fromPin?.lat;
-      const long = Number.isFinite(Number(addr.longitude))
-        ? Number(addr.longitude)
-        : fromPin?.long;
-      if (!Number.isFinite(lat) || !Number.isFinite(long)) {
-        toast.warning(
-          "Same day delivery isn't available for this location. Using Standard shipping."
-        );
-        setShippingMode("standard");
-        return;
-      }
+    // Address id is set but list hasn't caught up yet (first paint / reload).
+    // Keep a loading placeholder instead of a blank "no options" state.
+    if (!selectedAddress) {
       setShippingLoading(true);
       setShippingError("");
-      setDeliveryLat(lat);
-      setDeliveryLong(long);
-      try {
-        await fetchQuickRates(pin, lat, long);
-        toast.success("Same day delivery rates loaded");
-      } catch (e) {
-        console.error(e);
-        toast.warning(
-          e?.message ||
-            "Same day delivery unavailable. Switched to Standard shipping."
-        );
-        setShippingMode("standard");
-        try {
-          await fetchStandardRates(pin);
-        } catch (stdErr) {
-          setShippingError("Failed to calculate shipping for your pincode.");
-          applyCourierResult(null, "standard");
-        }
-      } finally {
-        setShippingLoading(false);
-      }
+      setShippingOptions([]);
+      applyOption(null);
       return;
     }
 
-    // standard
-    setShippingMode("standard");
-    setShippingLoading(true);
-    setShippingError("");
-    try {
-      await fetchStandardRates(pin);
-    } catch (e) {
-      console.error(e);
-      setShippingError("Failed to calculate shipping for your pincode.");
-      applyCourierResult(null, "standard");
-    } finally {
-      setShippingLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const addr = addresses.find((a) => a._id === selectedAddressId);
-    if (!addr) {
-      setShippingCharge(0);
-      setShippingError("");
-      setShippingLoading(false);
-      setSelectedCourier(null);
+    if (pin.length !== 6) {
+      clearShipping();
+      setShippingError("This address has an invalid pincode.");
       return;
     }
-    const pin = (addr.pincode || "").toString().replace(/\D/g, "").slice(0, 6);
+
+    // Cart empty / unweighable — nothing to quote yet.
+    if (weight <= 0) {
+      clearShipping();
+      return;
+    }
+
+    let cancelled = false;
 
     const run = async () => {
       setShippingLoading(true);
       setShippingError("");
-      setSelectedCourier(null);
-      setExpectedEtaText("");
+      setShippingOptions([]);
+      applyOption(null);
+
+      const fromPin = getPincodeCoords(pin);
+      const lat = Number.isFinite(addressLat) ? addressLat : fromPin?.lat;
+      const long = Number.isFinite(addressLong) ? addressLong : fromPin?.long;
+      const canQuick =
+        !!fromPin && Number.isFinite(lat) && Number.isFinite(long);
+
       try {
-        if (
-          shippingMode === "quick" &&
-          isPinQuickAvailable(pin) &&
-          Number.isFinite(deliveryLat) &&
-          Number.isFinite(deliveryLong)
-        ) {
-          await fetchQuickRates(pin, deliveryLat, deliveryLong);
-        } else {
-          if (shippingMode === "quick") {
-            setShippingMode("standard");
-            await fetchStandardRates(pin);
-          } else {
-            await fetchStandardRates(pin);
+        const stdPromise = getShippingRates(
+          SHIPROCKET_PICKUP_LOCATION_ID,
+          pin,
+          weight,
+          clientSubtotal,
+          { mode: "standard" }
+        );
+        const quickPromise = canQuick
+          ? getShippingRates(
+              SHIPROCKET_PICKUP_LOCATION_ID,
+              pin,
+              weight,
+              clientSubtotal,
+              { mode: "quick", lat, long }
+            )
+          : Promise.resolve(null);
+
+        const [stdRes, quickRes] = await Promise.all([stdPromise, quickPromise]);
+        if (cancelled) return;
+
+        const options = [];
+
+        if (quickRes?.success) {
+          const quickCouriers = extractCouriers(quickRes);
+          const bestQuick = pickBestCourier(quickCouriers, { preferAir: false });
+          if (bestQuick) {
+            options.push(toOption(bestQuick, "quick", 0, { lat, long }));
           }
+        }
+
+        if (!stdRes?.success) {
+          if (!options.length) {
+            setShippingError(
+              stdRes?.error ||
+                stdRes?.message ||
+                "Failed to calculate shipping for your pincode."
+            );
+          }
+        } else {
+          const stdCouriers = sortByRateAsc(extractCouriers(stdRes));
+          stdCouriers.forEach((c, i) => {
+            options.push(toOption(c, "standard", i));
+          });
+          if (!options.length) {
+            setShippingError(
+              "No suitable couriers available for this route. Please try a different address."
+            );
+          }
+        }
+
+        setShippingOptions(options);
+
+        if (options.length) {
+          const sameDay = options.find((o) => o.mode === "quick");
+          const bestStdCourier = pickBestCourier(
+            options.filter((o) => o.mode === "standard").map((o) => o.courier),
+            { preferAir: true }
+          );
+          const bestStd = bestStdCourier
+            ? options.find(
+                (o) => o.mode === "standard" && o.courier === bestStdCourier
+              ) ||
+              options.find(
+                (o) =>
+                  o.mode === "standard" &&
+                  (o.courier?.courier_company_id ?? o.courier?.id) ===
+                    (bestStdCourier?.courier_company_id ?? bestStdCourier?.id)
+              )
+            : options.find((o) => o.mode === "standard");
+          applyOption(sameDay || bestStd || options[0]);
         }
       } catch (e) {
         console.error("Shipping calc error", e);
-        if (shippingMode === "quick") {
-          toast.warning(
-            "Same day delivery unavailable. Falling back to Standard shipping."
-          );
-          setShippingMode("standard");
-          try {
-            await fetchStandardRates(pin);
-          } catch (_) {
-            setShippingError("Failed to calculate shipping for your pincode.");
-            applyCourierResult(null, "standard");
-          }
-        } else {
+        if (!cancelled) {
           setShippingError("Failed to calculate shipping for your pincode.");
-          applyCourierResult(null, "standard");
+          setShippingOptions([]);
+          applyOption(null);
         }
       } finally {
-        setShippingLoading(false);
+        if (!cancelled) setShippingLoading(false);
       }
     };
+
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: re-fetch on address/weight/mode/coords
+    return () => {
+      cancelled = true;
+    };
+    // Primitive deps only — avoid re-fetch/cancel loops from new `addresses` array refs.
   }, [
     selectedAddressId,
-    addresses,
-    cart.cartItems,
-    clientSubtotal,
+    selectedAddress?._id,
+    pin,
     weight,
-    shippingMode,
-    deliveryLat,
-    deliveryLong,
+    clientSubtotal,
+    addressLat,
+    addressLong,
   ]);
 
   return {
     shippingCharge,
     setShippingCharge,
     selectedCourier,
+    selectedOptionId,
+    shippingOptions,
+    selectShippingOption,
     expectedEtaText,
     setExpectedEtaText,
     shippingLoading,
-    setShippingLoading,
     shippingError,
-    setShippingError,
     weight,
-    showLocalDeliveryModal,
-    setShowLocalDeliveryModal,
-    showQuickIntroModal,
-    setShowQuickIntroModal,
-    isLocalDelivery,
-    quickEligible,
+    needsAddress,
     shippingMode,
-    selectShippingMode,
     deliveryLat,
     deliveryLong,
     clientSubtotal,

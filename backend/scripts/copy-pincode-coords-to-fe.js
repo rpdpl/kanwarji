@@ -1,4 +1,4 @@
-const fs = require("fs");
+﻿const fs = require("fs");
 const path = require("path");
 
 const srcPath = path.join(__dirname, "../src/utils/pincodeCoords.js");
@@ -10,7 +10,7 @@ const src = fs.readFileSync(srcPath, "utf8");
 const match = src.match(/const PINCODE_COORDS = \{[\s\S]*?\n\};/);
 if (!match) throw new Error("PINCODE_COORDS block not found");
 
-const out = `/** Delhi 110xxx pin centroids — keep in sync with backend/src/utils/pincodeCoords.js */
+const out = `/** Delhi NCR service-list pin centroids. Keep in sync with backend/src/utils/pincodeCoords.js */
 ${match[0]}
 
 function normalizePincode(pincode) {
@@ -27,7 +27,7 @@ export function getPincodeCoords(pincode) {
   return { lat, long };
 }
 
-/** Quick is available only when we have a pin centroid (Delhi 110xxx for now). */
+/** Quick is available only when we have a pin centroid (client Delhi NCR service list). */
 export function isPinQuickAvailable(pincode) {
   return !!getPincodeCoords(pincode);
 }

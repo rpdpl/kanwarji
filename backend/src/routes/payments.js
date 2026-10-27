@@ -122,6 +122,11 @@ app.post("/api/create-instamojo-payment", authenticateToken, async (req, res) =>
                     ? String(orderData.courierCompanyId)
                     : undefined,
             courierName: orderData.courierName || undefined,
+            courierRate:
+                orderData.courierRate != null
+                    ? Number(orderData.courierRate)
+                    : finalShiprocketFee || undefined,
+            courierEtd: orderData.courierEtd || undefined,
             isLocalShiprocket: false,
         });
 

@@ -231,15 +231,43 @@ export function OrdersPanel({
                                           Fallback used: Same day to Standard
                                         </div>
                                       )}
-                                      {order.deliveryLat != null && order.deliveryLong != null && (
-                                        <div className="truncate text-gray-500">
-                                          Drop coords: {Number(order.deliveryLat).toFixed(5)},{" "}
-                                          {Number(order.deliveryLong).toFixed(5)}
+                                      <div className="truncate">
+                                        Courier:{" "}
+                                        <span className="font-medium">
+                                          {order.courierName ||
+                                            (order.shippingMode === "quick"
+                                              ? "Same day delivery"
+                                              : "—")}
+                                        </span>
+                                        {order.courierCompanyId
+                                          ? ` · id ${order.courierCompanyId}`
+                                          : ""}
+                                      </div>
+                                      <div>
+                                        Rate:{" "}
+                                        <span className="font-medium">
+                                          ₹
+                                          {Number(
+                                            order.courierRate ??
+                                              order.shiprocketFee ??
+                                              0
+                                          ).toFixed(2)}
+                                        </span>
+                                      </div>
+                                      {order.courierEtd && (
+                                        <div className="truncate">
+                                          ETA: {order.courierEtd}
                                         </div>
                                       )}
-                                      {order.courierName && (
-                                        <div className="truncate">Courier: {order.courierName}</div>
-                                      )}
+                                      {order.shippingMode === "quick" &&
+                                        order.deliveryLat != null &&
+                                        order.deliveryLong != null && (
+                                          <div className="truncate text-gray-500">
+                                            Drop coords:{" "}
+                                            {Number(order.deliveryLat).toFixed(5)},{" "}
+                                            {Number(order.deliveryLong).toFixed(5)}
+                                          </div>
+                                        )}
                                       <div>
                                         Status:{" "}
                                         <span className="font-medium">

@@ -54,8 +54,6 @@ export default function useCheckoutAddresses({
       state: addr.state || "",
       pincode: addr.pincode || "",
       isDefault: !!addr.isDefault,
-      preferredShippingMode:
-        addr.preferredShippingMode === "quick" ? "quick" : "standard",
     });
     setShowMenuFor(null);
     setShowEditModal(true);

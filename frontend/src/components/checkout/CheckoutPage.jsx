@@ -11,9 +11,8 @@ import CartItemsCard from "./CartItemsCard";
 import AddressSection from "./AddressSection";
 import PaymentMethodCard from "./PaymentMethodCard";
 import OrderSummaryCard from "./OrderSummaryCard";
-import ShippingModeCard from "./ShippingModeCard";
+import ShippingOptionsCard from "./ShippingOptionsCard";
 import PlaceOrderBar from "./PlaceOrderBar";
-import LocalDeliveryModal from "./LocalDeliveryModal";
 import AddressFormModal from "./AddressFormModal";
 import SuccessModal from "./SuccessModal";
 
@@ -62,6 +61,7 @@ const CheckoutPage = () => {
       deliveryLat: shipping.deliveryLat,
       deliveryLong: shipping.deliveryLong,
       selectedCourier: shipping.selectedCourier,
+      expectedEtaText: shipping.expectedEtaText,
     });
 
   if (loading) {
@@ -115,13 +115,13 @@ const CheckoutPage = () => {
           handleDeleteAddress={addressUi.handleDeleteAddress}
         />
 
-        <ShippingModeCard
-          hasAddress={!!selectedAddressId}
-          quickEligible={shipping.quickEligible}
-          shippingMode={shipping.shippingMode}
-          onSelectMode={shipping.selectShippingMode}
+        <ShippingOptionsCard
+          needsAddress={shipping.needsAddress}
+          shippingOptions={shipping.shippingOptions}
+          selectedOptionId={shipping.selectedOptionId}
+          onSelectOption={shipping.selectShippingOption}
           shippingLoading={shipping.shippingLoading}
-          selectedCourier={shipping.selectedCourier}
+          shippingError={shipping.shippingError}
         />
 
         <PaymentMethodCard />
@@ -151,14 +151,6 @@ const CheckoutPage = () => {
         placingOrder={placingOrder}
         shippingLoading={shipping.shippingLoading}
         shippingError={shipping.shippingError}
-      />
-
-      <LocalDeliveryModal
-        show={shipping.showLocalDeliveryModal}
-        addresses={addresses}
-        selectedAddressId={selectedAddressId}
-        onClose={() => shipping.setShowLocalDeliveryModal(false)}
-        onChooseQuick={() => shipping.selectShippingMode("quick")}
       />
 
       <AddressFormModal

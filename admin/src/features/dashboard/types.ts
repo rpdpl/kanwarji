@@ -82,6 +82,8 @@ export interface Order {
   deliveryLong?: number
   courierCompanyId?: string
   courierName?: string
+  courierRate?: number
+  courierEtd?: string
 }
 
 export interface CancellationRequest {

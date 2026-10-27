@@ -77,6 +77,8 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
             deliveryLong,
             courierCompanyId,
             courierName,
+            courierRate,
+            courierEtd,
         } = req.body;
 
         // Validate required fields
@@ -159,6 +161,13 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
             deliveryLong: Number.isFinite(longNum) ? longNum : undefined,
             courierCompanyId: courierCompanyId != null ? String(courierCompanyId) : undefined,
             courierName: courierName || undefined,
+            courierRate:
+                courierRate != null
+                    ? Number(courierRate)
+                    : shiprocketFee != null
+                      ? Number(shiprocketFee)
+                      : undefined,
+            courierEtd: courierEtd || undefined,
             isLocalShiprocket: false,
         });
 

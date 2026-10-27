@@ -19,6 +19,7 @@ export default function usePlaceOrder({
   deliveryLat = null,
   deliveryLong = null,
   selectedCourier = null,
+  expectedEtaText = "",
 }) {
   const navigate = useNavigate();
   const [placingOrder, setPlacingOrder] = useState(false);
@@ -133,7 +134,12 @@ export default function usePlaceOrder({
           selectedCourier?.courier_company_id ??
           selectedCourier?.id ??
           undefined,
-        courierName: selectedCourier?.courier_name || undefined,
+        courierName:
+          shippingMode === "quick"
+            ? "Same day delivery"
+            : selectedCourier?.courier_name || undefined,
+        courierRate: shippingFee,
+        courierEtd: expectedEtaText || undefined,
       };
 
       console.log(

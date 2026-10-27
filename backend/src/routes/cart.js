@@ -440,22 +440,22 @@ app.post("/api/shipping-rate", async (req, res) => {
             if (!baseCouriers.length) {
                 throw new Error("No couriers available for this route from Shiprocket");
             }
-            // Filter out Surface completely; only allow Air/Express (mode === 1 or is_surface === false or name contains Air/Express)
+            // Show Air/Express and Surface. Prefer Air/Express when auto-picking a rate.
             const allCouriers = baseCouriers;
             const airCouriers = allCouriers.filter((c) => {
-                // STRICT: allow only Air/Express. Exclude anything marked as surface.
-                // Accept when explicitly air/express by mode or flag.
                 const isAirMode = Number(c?.mode) === 1;
                 const notSurface = c?.is_surface === false;
-                return (isAirMode || notSurface);
+                const name = String(c?.courier_name || "").toLowerCase();
+                const hasAirName =
+                    name.includes("air") ||
+                    name.includes("express") ||
+                    name.includes("speed post");
+                return isAirMode || notSurface || hasAirName;
             });
-
-            if (airCouriers.length === 0) {
-                throw new Error("Only surface couriers available; food items require Air/Express");
-            }
+            const pickFrom = airCouriers.length ? airCouriers : allCouriers;
 
             // Choose the fastest by earliest ETA hours; fallback to estimated_delivery_days; break ties by lower rate
-            const fastest = airCouriers.reduce((best, cur) => {
+            const fastest = pickFrom.reduce((best, cur) => {
                 const bestEta = Number((best.etd_hours ?? (best.estimated_delivery_days != null ? Number(best.estimated_delivery_days) * 24 : undefined)))
                     || Number.POSITIVE_INFINITY;
                 const curEta = Number((cur.etd_hours ?? (cur.estimated_delivery_days != null ? Number(cur.estimated_delivery_days) * 24 : undefined)))
@@ -465,11 +465,11 @@ app.post("/api/shipping-rate", async (req, res) => {
                 if (curEta > bestEta) return best;
                 // Tie on ETA: pick cheaper
                 return (Number(cur.rate) < Number(best.rate)) ? cur : best;
-            }, airCouriers[0]);
+            }, pickFrom[0]);
 
             const shippingCost = fastest.rate;
 
-            console.log("✅ Fastest Air/Express selected: ₹", shippingCost, "via", fastest.courier_name);
+            console.log("✅ Fastest courier selected: ₹", shippingCost, "via", fastest.courier_name);
             console.log("=== Shipping Rate Calculation Complete ===");
 
             return res.json({
@@ -477,23 +477,23 @@ app.post("/api/shipping-rate", async (req, res) => {
                 shippingCost,
                 message: `Shipping to PIN ${pincode}: ₹${shippingCost} via ${fastest.courier_name}`,
                 details: fastest,
-                couriers: airCouriers,
-                // Provide a Shiprocket-compatible data shape (filtered to Air/Express only)
+                couriers: allCouriers,
+                // Provide a Shiprocket-compatible data shape (Air + Surface)
                 data: {
-                    available_courier_companies: airCouriers,
+                    available_courier_companies: allCouriers,
                     recommended_courier_company_id: fastest.courier_company_id,
                     shiprocket_recommended_courier_id: fastest.courier_company_id,
                     // Add nested data block for clients expecting Shiprocket's nested shape
                     // Also mirror to couriers for clients reading this key
                     data: {
-                        available_courier_companies: airCouriers,
+                        available_courier_companies: allCouriers,
                         recommended_courier_company_id: fastest.courier_company_id,
                         shiprocket_recommended_courier_id: fastest.courier_company_id,
                         // Also mirror to couriers for clients reading this key
-                        couriers: airCouriers,
+                        couriers: allCouriers,
                     },
                     // Also expose at this level for clients reading `couriers`
-                    couriers: airCouriers,
+                    couriers: allCouriers,
                 },
             });
         } else {

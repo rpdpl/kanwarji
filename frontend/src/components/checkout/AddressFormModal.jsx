@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { FaTimes } from "react-icons/fa";
-import AddressDeliveryModeFields from "./AddressDeliveryModeFields";
-import { isPinQuickAvailable } from "../../utils/pincodeCoords";
 
 export default function AddressFormModal({
   open,
@@ -11,31 +9,6 @@ export default function AddressFormModal({
   onClose,
   onSubmit,
 }) {
-  const [pinWarning, setPinWarning] = useState("");
-  const pinEligible = isPinQuickAvailable(form.pincode);
-
-  useEffect(() => {
-    if (!open) return;
-    const pin = String(form.pincode || "").replace(/\D/g, "");
-    if (pin.length >= 6 && !pinEligible && form.preferredShippingMode === "quick") {
-      setForm((prev) => ({
-        ...prev,
-        preferredShippingMode: "standard",
-      }));
-      setPinWarning(
-        "Same day delivery isn't available for this location. Standard shipping is selected."
-      );
-    } else if (pinEligible) {
-      setPinWarning("");
-    } else if (pin.length >= 6) {
-      setPinWarning(
-        "Same day delivery isn't available for this location. Standard shipping is selected."
-      );
-    } else {
-      setPinWarning("");
-    }
-  }, [form.pincode, pinEligible, form.preferredShippingMode, open, setForm]);
-
   if (!open) return null;
   const title = mode === "edit" ? "Edit Address" : "Add New Address";
   const submitLabel = mode === "edit" ? "Update Address" : "Add Address";
@@ -107,13 +80,6 @@ export default function AddressFormModal({
             value={form.pincode}
             onChange={(e) => setForm({ ...form, pincode: e.target.value })}
             required
-          />
-
-          <AddressDeliveryModeFields
-            form={form}
-            setForm={setForm}
-            pinEligible={pinEligible}
-            warning={pinWarning}
           />
 
           <label className="flex items-center gap-3">
