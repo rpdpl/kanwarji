@@ -23,6 +23,7 @@ const { generateOTP, generateOrderId, calculateBilledWeight } = require("../util
 const { getShippingEstimate } = require("../utils/pincode");
 const { generateInvoicePDF } = require("../utils/invoice");
 const { createShipmentForOrder } = require("../utils/createShipmentForOrder");
+const { toPublicOrder, toPublicOrders } = require("../utils/publicOrder");
 const env = require("../config/env");
 const email = require("../../services/email");
 const {
@@ -362,26 +363,7 @@ app.post("/api/orders", authenticateToken, async (req, res) => {
             success: true,
             message: "Order placed successfully!",
             order_id: order.orderId,
-            order: {
-                id: order._id,
-                orderId: order.orderId,
-                totalAmount: order.totalAmount,
-                paymentStatus: order.paymentStatus,
-                orderStatus: order.orderStatus,
-                paymentMethod: order.paymentMethod,
-                shipmentStatus: order.shipmentStatus,
-                shiprocketOrderId: order.shiprocketOrderId || null,
-                shiprocketError: order.shiprocketError || null,
-                isLocalShiprocket: !!order.isLocalShiprocket,
-                shippingMode: order.shippingMode,
-                requestedShippingMode: order.requestedShippingMode,
-                shippingFallbackUsed: !!order.shippingFallbackUsed,
-                deliveryLat: order.deliveryLat,
-                deliveryLong: order.deliveryLong,
-                estimatedShiprocket: order.estimatedShiprocket,
-                specialRequests: order.specialRequests, // Include in response
-                createdAt: order.createdAt,
-            },
+            order: toPublicOrder(order),
         });
     } catch (error) {
         console.error("Create order error:", error);
@@ -433,14 +415,13 @@ app.get(
 app.get("/api/orders", authenticateToken, async (req, res) => {
     try {
         const { page = 1, limit = 10, status } = req.query;
-        const query = {}; // Filter by user ID
+        const query = { userId: req.user.id };
 
         if (status) {
             query.orderStatus = status;
         }
 
         const orders = await Order.find(query)
-            .populate("userId", "name email phone")
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
@@ -449,7 +430,7 @@ app.get("/api/orders", authenticateToken, async (req, res) => {
 
         res.json({
             success: true,
-            orders,
+            orders: toPublicOrders(orders),
             totalPages: Math.ceil(total / limit),
             currentPage: Number.parseInt(page),
             totalOrders: total,
@@ -496,7 +477,7 @@ app.get("/api/orders/:orderId", authenticateToken, async (req, res) => {
         }
         res.json({
             success: true,
-            order,
+            order: toPublicOrder(order),
         });
     } catch (error) {
         console.error("Get order error:", error);

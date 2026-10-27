@@ -20,6 +20,7 @@ const {
   validateInstamojoBuyer,
 } = require("../utils/instamojoErrors");
 const { formatInstamojoPurpose } = require("../utils/orderShippingSummary");
+const { toPublicOrders } = require("../utils/publicOrder");
 const env = require("../config/env");
 
 const SERVER_BASE_URL = env.SERVER_BASE_URL;
@@ -464,7 +465,7 @@ module.exports = function registerPaymentsRoutes(app) {
       res.json({
         success: true,
         data: {
-          orders,
+          orders: toPublicOrders(orders),
           pagination: {
             currentPage: page,
             totalPages,
