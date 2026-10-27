@@ -130,7 +130,18 @@ export function OrdersPanel({
                                 <span className="capitalize">{(order.paymentStatus === 'paid' || order.orderStatus === 'confirmed' || !!order.paymentId) ? 'paid' : order.paymentStatus}</span>
                               </Badge>
 
-
+                              {(order.paymentStatus === "paid" || !!order.paymentId) &&
+                                order.orderStatus !== "cancelled" &&
+                                (order.shipmentStatus === "failed" ||
+                                  (!!order.shiprocketError && !order.shiprocketOrderId)) && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-red-300 text-xs sm:text-sm text-red-800 bg-red-50"
+                                    title={order.shiprocketError || "Shipment creation failed"}
+                                  >
+                                    Shipment failed — retry
+                                  </Badge>
+                                )}
 
                               <Button
                                 size="sm"

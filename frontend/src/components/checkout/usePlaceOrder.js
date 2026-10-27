@@ -55,15 +55,19 @@ export default function usePlaceOrder({
       } else {
         console.error("Instamojo create response:", res.data);
         toast.error(
-          res.data.message || "Failed to initiate payment. Please try again."
+          res.data?.message || "Failed to initiate payment. Please try again."
         );
         setPlacingOrder(false);
         sessionStorage.removeItem("pendingOrderData");
       }
     } catch (err) {
-      console.error("Instamojo payment error:", err);
+      console.error("Instamojo payment error:", err?.response?.data || err);
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (typeof err?.response?.data === "string" ? err.response.data : null);
       toast.error(
-        err.message || "Failed to initiate payment. Please try again."
+        apiMessage || err.message || "Failed to initiate payment. Please try again."
       );
       setPlacingOrder(false);
       sessionStorage.removeItem("pendingOrderData");

@@ -8,6 +8,7 @@ import Register from "../components/Register";
 import HomePage from "../components/HomePage";
 import ProductDetails from "../components/ProductDetails";
 import PaymentSuccess from "../components/PaymentSuccess";
+import PaymentFailed from "../components/PaymentFailed";
 import Categories from "../components/Categories";
 import Discount from "../components/Discount";
 import AboutUs from "../components/AboutUs";
@@ -51,6 +52,7 @@ export default function AppRoutes() {
             }
           />
           <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failed" element={<PaymentFailed />} />
           <Route
             path="/profile"
             element={

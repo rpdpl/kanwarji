@@ -2,6 +2,16 @@ require("dotenv").config();
 
 const PORT = process.env.PORT || 3000;
 
+function parseBool(value, defaultValue = false) {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  const s = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(s)) return true;
+  if (["0", "false", "no", "off"].includes(s)) return false;
+  return defaultValue;
+}
+
+const INSTAMOJO_SANDBOX = parseBool(process.env.INSTAMOJO_SANDBOX, false);
+
 module.exports = {
   PORT,
   NODE_ENV: process.env.NODE_ENV || "development",
@@ -19,10 +29,12 @@ module.exports = {
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+  INSTAMOJO_SANDBOX,
   INSTAMOJO_API_KEY:
     process.env.INSTAMOJO_API_KEY || process.env.INSTAMOJO_KEY || "",
   INSTAMOJO_AUTH_TOKEN:
     process.env.INSTAMOJO_AUTH_TOKEN || process.env.INSTAMOJO_TOKEN || "",
+  INSTAMOJO_PRIVATE_SALT: process.env.INSTAMOJO_PRIVATE_SALT || "",
   SHIPROCKET_EMAIL: process.env.SHIPROCKET_EMAIL,
   SHIPROCKET_PASSWORD: process.env.SHIPROCKET_PASSWORD,
   SHIPROCKET_CHANNEL_ID: process.env.SHIPROCKET_CHANNEL_ID,

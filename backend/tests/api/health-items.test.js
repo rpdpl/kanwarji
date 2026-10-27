@@ -17,6 +17,9 @@ jest.mock("../../services/instamojo", () => ({
   processInstamojoRefund: jest.fn(),
   INSTAMOJO_API_KEY: "",
   INSTAMOJO_AUTH_TOKEN: "",
+  INSTAMOJO_SANDBOX: false,
+  INSTAMOJO_PRIVATE_SALT: "",
+  INSTAMOJO_BASE_URL: "https://www.instamojo.com/api/1.1/",
 }));
 
 jest.mock("../../services/shiprocket", () => ({
