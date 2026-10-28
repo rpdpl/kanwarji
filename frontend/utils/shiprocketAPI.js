@@ -49,6 +49,8 @@ export const getShippingRates = async (
       body.lat = options.lat;
       body.long = options.long;
     }
+    // Instamojo checkout is prepaid-only — always quote prepaid rates unless COD is explicit
+    body.cod = options.cod === 1 || options.cod === true ? 1 : 0;
     const response = await apiPost('/api/shiprocket/shipping-rates', body);
     const data = response.data;
     if (data && data.data && data.data.available_courier_companies && !data.data.available_courier_companies_vg) {

@@ -170,7 +170,8 @@ app.post("/api/shiprocket/shipping-rates", authenticateToken, async (req, res) =
                 mode: shippingMode,
                 lat: dropLat,
                 long: dropLong,
-                cod: cod === 0 || cod === false ? 0 : 1,
+                // Default prepaid (Instamojo); only COD when client explicitly sends 1/true
+                cod: cod === 1 || cod === true ? 1 : 0,
             }
         );
 

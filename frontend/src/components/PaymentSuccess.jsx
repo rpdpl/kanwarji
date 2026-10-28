@@ -98,7 +98,13 @@ const PaymentSuccess = () => {
             }, 0) || 0;
 
             const billedWeight = calculateBilledWeight(totalWeightKg);
-            const rates = await getShippingRates(SHIPROCKET_PICKUP_LOCATION_ID, pin, billedWeight, Number(order.subtotal || 0));
+            const rates = await getShippingRates(
+              SHIPROCKET_PICKUP_LOCATION_ID,
+              pin,
+              billedWeight,
+              Number(order.subtotal || 0),
+              { mode: "standard", cod: 0 }
+            );
             if (rates?.success && rates?.data) {
               const allRates = rates.data.available_courier_companies_vg || rates.data.data?.available_courier_companies_vg || rates.data.data?.available_courier_companies || [];
               const airRates = (allRates || []).filter((c) => (c?.is_surface === false) || Number(c?.mode) === 1 || /air|express|speed post/i.test(String(c.courier_name || "")));

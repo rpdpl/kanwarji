@@ -73,7 +73,7 @@ describe("services/shiprocket (mocked axios)", () => {
       expect(result.error).toMatch(/Missing SHIPROCKET|authentication failed/i);
     });
 
-    it("calls serviceability with pickup, delivery, weight, COD", async () => {
+    it("calls serviceability with pickup, delivery, weight, prepaid by default", async () => {
       process.env.SHIPROCKET_EMAIL = "shop@example.com";
       process.env.SHIPROCKET_PASSWORD = "secret";
       axios.post.mockResolvedValueOnce({ data: { token: "sr-token" } });
@@ -83,6 +83,30 @@ describe("services/shiprocket (mocked axios)", () => {
 
       const shiprocket = loadShiprocket();
       const result = await shiprocket.getShippingRate("110006", "400001", 0.5, 500);
+
+      expect(result.success).toBe(true);
+      expect(axios.get).toHaveBeenCalledWith(
+        `${SHIPROCKET_BASE}/courier/serviceability/?pickup_postcode=110006&delivery_postcode=400001&weight=0.5&cod=0`,
+        { headers: { Authorization: "Bearer sr-token" } }
+      );
+    });
+
+    it("calls serviceability with COD when explicitly requested", async () => {
+      process.env.SHIPROCKET_EMAIL = "shop@example.com";
+      process.env.SHIPROCKET_PASSWORD = "secret";
+      axios.post.mockResolvedValueOnce({ data: { token: "sr-token" } });
+      axios.get.mockResolvedValueOnce({
+        data: { data: { available_courier_companies: [{ courier_name: "X" }] } },
+      });
+
+      const shiprocket = loadShiprocket();
+      const result = await shiprocket.getShippingRate(
+        "110006",
+        "400001",
+        0.5,
+        500,
+        { cod: 1 }
+      );
 
       expect(result.success).toBe(true);
       expect(axios.get).toHaveBeenCalledWith(

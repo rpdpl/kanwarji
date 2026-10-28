@@ -239,7 +239,7 @@ export default function useCheckoutShipping({
           pin,
           weight,
           clientSubtotal,
-          { mode: "standard" }
+          { mode: "standard", cod: 0 }
         );
         const quickPromise = canQuick
           ? getShippingRates(
@@ -247,7 +247,7 @@ export default function useCheckoutShipping({
               pin,
               weight,
               clientSubtotal,
-              { mode: "quick", lat, long }
+              { mode: "quick", lat, long, cod: 0 }
             )
           : Promise.resolve(null);
 

@@ -50,12 +50,8 @@ export const getShippingRates = async (
       body.lat = options.lat;
       body.long = options.long;
     }
-    // Quick is prepaid-serviceable on Shiprocket; default COD off for quick
-    if (mode === "quick") {
-      body.cod = options.cod === 1 || options.cod === true ? 1 : 0;
-    } else if (options.cod === 0 || options.cod === false) {
-      body.cod = 0;
-    }
+    // Instamojo checkout is prepaid-only — always quote prepaid rates unless COD is explicit
+    body.cod = options.cod === 1 || options.cod === true ? 1 : 0;
 
     const response = await apiPost('/api/shiprocket/shipping-rates', body);
     const data = response.data || {};

@@ -272,15 +272,9 @@ async function getShippingRate(
   }
 
   const mode = options.mode === "quick" ? "quick" : "standard";
-  // Quick (hyperlocal) on this account is prepaid-only; COD returns no serviceability
-  const cod =
-    mode === "quick"
-      ? options.cod === 1 || options.cod === true
-        ? 1
-        : 0
-      : options.cod === 0 || options.cod === false
-        ? 0
-        : 1;
+  // Shop is Instamojo/prepaid-only. Default rates to prepaid (cod=0); COD only when explicitly requested.
+  // Quick (hyperlocal) on this account is also prepaid-only — COD returns no serviceability.
+  const cod = options.cod === 1 || options.cod === true ? 1 : 0;
   const pickup = pickupPostcode || getPickupPostcode();
 
   try {
