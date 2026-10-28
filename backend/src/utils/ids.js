@@ -10,16 +10,11 @@ function generateOrderId() {
   return `ORD${timestamp}${random}`;
 }
 
+/** +100 g packing buffer per 1 kg of product (e.g. 2 kg → 2.2 kg, 10 kg → 11 kg). */
 function calculateBilledWeight(w) {
   const weight = parseFloat(w);
-  if (isNaN(weight) || weight <= 0) return 0.5;
-
-  if (weight === 0.5) return 0.5;
-  if (weight >= 1.0 && Number.isInteger(weight)) return weight;
-
-  if (weight <= 0.25) return 0.5;
-  if (weight <= 0.75) return 1.0;
-  return Math.ceil(weight - 0.75) + 1;
+  if (isNaN(weight) || weight <= 0) return 0;
+  return Math.round(weight * 1.1 * 1000) / 1000;
 }
 
 module.exports = {

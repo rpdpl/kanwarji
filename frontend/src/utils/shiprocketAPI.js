@@ -201,18 +201,13 @@ export const QUICK_ELIGIBLE_PINCODES = new Set([
 export const FREE_SHIPPING_PINCODES = QUICK_ELIGIBLE_PINCODES;
 
 /**
- * Calculate billed weight for shipping
- * @param {number} weightKg - Weight in kg
- * @returns {number} - Billed weight in kg
+ * Billed shipping weight: +100 g packing buffer per 1 kg of product.
+ * Examples: 1 kg → 1.1 kg, 2 kg → 2.2 kg, 10 kg → 11 kg.
+ * @param {number} weightKg - Actual cart weight in kg
+ * @returns {number} - Weight to send to Shiprocket (kg)
  */
 export const calculateBilledWeight = (weightKg) => {
   const w = Number(weightKg) || 0;
   if (w <= 0) return 0;
-  if (w <= 0.25) return 0.5; // 1–250 g → 0.5 kg
-  if (w <= 0.75) return 1;   // 251–750 g → 1.0 kg
-  // For weights > 0.75 kg:
-  // If w <= k + 0.75, charge k + 1; else charge k + 2, where k = floor(w)
-  const k = Math.floor(w);
-  if (w <= k + 0.75) return k + 1; // e.g., 0.76–1.75 → 2.0 kg; 1.00–1.75 → 2.0 kg
-  return k + 2;                    // e.g., 1.76–2.75 → 3.0 kg; and so forth
+  return Math.round(w * 1.1 * 1000) / 1000;
 };
