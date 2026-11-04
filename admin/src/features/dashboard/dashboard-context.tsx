@@ -19,6 +19,7 @@ import {
   mapVariants,
   rejectCancellation,
   retryShiprocketOrder as retryShiprocketOrderApi,
+  syncOrderPayment as syncOrderPaymentApi,
   toggleProductStatus as toggleProductStatusApi,
   toggleUserStatus as toggleUserStatusApi,
   updateProductForm,
@@ -98,7 +99,9 @@ type DashboardContextValue = {
   closeCancelModal: () => void
   cancelOrder: () => Promise<void>
   retryShiprocket: (order: Order) => Promise<void>
+  syncPayment: (order: Order) => Promise<void>
   retryingOrderId: string | null
+  syncingOrderId: string | null
   handleLogout: () => void
 }
 
@@ -128,6 +131,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [cancelRemark, setCancelRemark] = useState("")
   const [isCancelling, setIsCancelling] = useState(false)
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
+  const [syncingOrderId, setSyncingOrderId] = useState<string | null>(null)
   const router = useRouter()
 
   const [isAddingProduct, setIsAddingProduct] = useState(false)
@@ -612,6 +616,34 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const syncPayment = async (order: Order) => {
+    try {
+      setSyncingOrderId(order.orderId)
+      setError("")
+      const data = await syncOrderPaymentApi(order._id || order.orderId)
+      const refreshed = await loadOrders()
+      setOrders(refreshed)
+      if (data.success) {
+        alert(
+          data.message ||
+            (data.shiprocketOrderId
+              ? `Payment synced. Shiprocket: ${data.shiprocketOrderId}`
+              : "Payment synced with Instamojo"),
+        )
+      } else {
+        setError(data.message || "Payment sync failed")
+      }
+    } catch (err: any) {
+      setError(err?.message || "Payment sync failed")
+      try {
+        const refreshed = await loadOrders()
+        setOrders(refreshed)
+      } catch (_) {}
+    } finally {
+      setSyncingOrderId(null)
+    }
+  }
+
   const closeCancelModal = () => {
     setShowCancelModal(false)
     setCancelRemark("")
@@ -710,7 +742,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     closeCancelModal,
     cancelOrder,
     retryShiprocket,
+    syncPayment,
     retryingOrderId,
+    syncingOrderId,
     handleLogout,
   }
 

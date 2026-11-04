@@ -55,11 +55,26 @@ const orderSchema = new mongoose.Schema({
     default: "pending",
   },
   shiprocketOrderId: { type: String },
+  shiprocketShipmentId: { type: String },
   awbNumber: { type: String },
   shipmentStatus: { type: String, default: "pending" },
   shiprocketError: { type: String },
+  /** Last raw Shiprocket API error/response payload (capped by caller) */
+  shiprocketLastResponse: { type: mongoose.Schema.Types.Mixed },
   estimatedShiprocket: { type: Date },
   shiprocketAt: { type: Date },
+  /** Ring buffer of Instamojo / Shiprocket / other 3rd-party attempts */
+  thirdPartyLogs: [
+    {
+      service: { type: String, required: true },
+      action: { type: String, required: true },
+      success: { type: Boolean, default: false },
+      message: { type: String, default: "" },
+      statusCode: { type: Number },
+      response: { type: mongoose.Schema.Types.Mixed },
+      at: { type: Date, default: Date.now },
+    },
+  ],
   // quick = Hyperlocal; standard = nationwide. requested* is what checkout asked for.
   requestedShippingMode: {
     type: String,

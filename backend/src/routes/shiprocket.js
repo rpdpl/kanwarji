@@ -376,7 +376,8 @@ app.post("/api/shiprocket/retry-order", authenticateToken, requireAdmin, async (
             });
         }
 
-        // Allow prepaid (paid) or COD confirmed orders
+        // Allow prepaid only when paymentStatus is paid (paymentId alone can mean Failed attempt)
+        // COD: confirmed/processing/pending
         const canShip =
             order.paymentStatus === "paid" ||
             (order.paymentMethod === "cod" &&
@@ -385,7 +386,11 @@ app.post("/api/shiprocket/retry-order", authenticateToken, requireAdmin, async (
             return res.status(400).json({
                 success: false,
                 message:
-                    "Cannot create Shiprocket order: need paid online order or confirmed COD order",
+                    order.paymentMethod === "online" && order.paymentStatus !== "paid"
+                        ? `Cannot create Shiprocket: online order paymentStatus is "${order.paymentStatus}" (not paid). Use Sync Payment to verify Instamojo first.`
+                        : "Cannot create Shiprocket order: need paid online order or confirmed COD order",
+                paymentStatus: order.paymentStatus,
+                paymentId: order.paymentId || null,
             });
         }
 

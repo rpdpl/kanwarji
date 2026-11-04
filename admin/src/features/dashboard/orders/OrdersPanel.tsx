@@ -16,13 +16,35 @@ type Props = {
   downloadInvoice: (order: Order) => void
   onRequestCancel: (order: Order) => void
   onRetryShiprocket?: (order: Order) => void
+  onSyncPayment?: (order: Order) => void
   retryingOrderId?: string | null
+  syncingOrderId?: string | null
+}
+
+/** True only when Instamojo/COD payment is actually settled — never infer from paymentId alone (failed attempts also store paymentId). */
+function isReallyPaid(order: Order) {
+  if (order.paymentStatus === "paid") return true
+  if (order.paymentMethod === "cod" && order.orderStatus === "delivered") return true
+  return false
+}
+
+function paymentBadgeLabel(order: Order) {
+  if (order.orderStatus === "cancelled") {
+    return order.paymentStatus === "refunded" ? "refunded" : order.paymentStatus
+  }
+  if (order.paymentMethod === "cod") {
+    if (order.paymentStatus === "paid") return "paid"
+    return "cod pending"
+  }
+  return order.paymentStatus
 }
 
 function shouldShowOrder(order: Order) {
   // COD orders stay paymentStatus=pending but are real confirmed orders
   if (order.paymentMethod === "cod") return order.orderStatus !== "failed"
-  if (order.paymentStatus === "paid" || !!order.paymentId) return true
+  if (order.paymentStatus === "paid") return true
+  // Show pending/failed online orders that have a payment request so admin can Sync Payment
+  if (order.paymentMethod === "online" && (order.paymentRequestId || order.paymentId)) return true
   if (order.orderStatus === "confirmed" || order.orderStatus === "processing" || order.orderStatus === "shipped") {
     return true
   }
@@ -36,7 +58,9 @@ export function OrdersPanel({
   downloadInvoice,
   onRequestCancel,
   onRetryShiprocket,
+  onSyncPayment,
   retryingOrderId,
+  syncingOrderId,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -117,23 +141,22 @@ export function OrdersPanel({
                               <Badge
                                 variant="outline"
                                 className={`border-gray-300 text-xs sm:text-sm ${
-                                  // If order is cancelled, show orange regardless of paid status
                                   order.orderStatus === "cancelled"
                                     ? "text-orange-700 bg-orange-50 border-orange-200"
-                                    : (order.paymentStatus === "paid" || order.orderStatus === "confirmed" || !!order.paymentId)
+                                    : isReallyPaid(order)
                                       ? "text-green-700 bg-green-50 border-green-200"
                                       : order.paymentStatus === "pending"
                                         ? "text-orange-700 bg-orange-50 border-orange-200"
                                         : "text-red-700 bg-red-50 border-red-200"
                                   }`}
                               >
-                                <span className="capitalize">{(order.paymentStatus === 'paid' || order.orderStatus === 'confirmed' || !!order.paymentId) ? 'paid' : order.paymentStatus}</span>
+                                <span className="capitalize">{paymentBadgeLabel(order)}</span>
                               </Badge>
 
-                              {(order.paymentStatus === "paid" || !!order.paymentId) &&
+                              {isReallyPaid(order) &&
                                 order.orderStatus !== "cancelled" &&
                                 (order.shipmentStatus === "failed" ||
-                                  (!!order.shiprocketError && !order.shiprocketOrderId)) && (
+                                  (!!order.shiprocketError && !order.awbNumber)) && (
                                   <Badge
                                     variant="outline"
                                     className="border-red-300 text-xs sm:text-sm text-red-800 bg-red-50"
@@ -296,11 +319,29 @@ export function OrdersPanel({
                                           Error: {order.shiprocketError}
                                         </div>
                                       )}
+                                      {onSyncPayment &&
+                                        order.paymentMethod === "online" &&
+                                        order.paymentStatus !== "paid" &&
+                                        order.orderStatus !== "cancelled" &&
+                                        (!!order.paymentRequestId || !!order.paymentId) && (
+                                          <Button
+                                            size="sm"
+                                            className="mt-2 mr-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                                            disabled={syncingOrderId === order.orderId}
+                                            onClick={() => onSyncPayment(order)}
+                                          >
+                                            {syncingOrderId === order.orderId
+                                              ? "Syncing…"
+                                              : "Sync Payment"}
+                                          </Button>
+                                        )}
                                       {onRetryShiprocket &&
                                         !order.isLocalShiprocket &&
+                                        isReallyPaid(order) &&
                                         (!order.shiprocketOrderId ||
                                           order.shipmentStatus === "failed" ||
                                           !!order.shiprocketError ||
+                                          (order.shippingMode === "quick" && !order.awbNumber) ||
                                           order.shippingFallbackUsed) &&
                                         order.orderStatus !== "cancelled" && (
                                           <Button
@@ -313,6 +354,25 @@ export function OrdersPanel({
                                             {retryingOrderId === order.orderId
                                               ? "Retrying…"
                                               : "Retry Shiprocket"}
+                                          </Button>
+                                        )}
+                                      {onSyncPayment &&
+                                        order.paymentMethod === "online" &&
+                                        order.paymentStatus === "paid" &&
+                                        order.orderStatus !== "cancelled" &&
+                                        (!order.shiprocketOrderId ||
+                                          order.shipmentStatus === "failed") && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="mt-2 ml-2 text-xs"
+                                            disabled={syncingOrderId === order.orderId}
+                                            onClick={() => onSyncPayment(order)}
+                                            title="Re-check Instamojo and retry fulfillment"
+                                          >
+                                            {syncingOrderId === order.orderId
+                                              ? "Syncing…"
+                                              : "Re-sync Payment"}
                                           </Button>
                                         )}
                                     </>

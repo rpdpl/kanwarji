@@ -64,12 +64,14 @@ export interface Order {
   paymentMethod: string
   paymentStatus: string
   paymentId?: string
+  paymentRequestId?: string
   orderStatus: string
   totalAmount: number
   specialRequests?: string
   createdAt: string
   convenienceFee?: number
   shiprocketOrderId?: string
+  shiprocketShipmentId?: string
   shipmentStatus?: string
   shiprocketError?: string
   awbNumber?: string

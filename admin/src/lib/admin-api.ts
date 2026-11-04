@@ -191,10 +191,28 @@ export async function retryShiprocketOrder(orderId: string) {
     message?: string
     shiprocketOrderId?: string
     error?: string
+    paymentStatus?: string
   }>("/shiprocket/retry-order", {
     method: "POST",
     json: true,
     body: JSON.stringify({ orderId }),
+  })
+}
+
+/** Verify Instamojo Credit and mark paid + fulfill Shiprocket if needed. */
+export async function syncOrderPayment(orderId: string) {
+  return apiJson<{
+    success?: boolean
+    message?: string
+    paymentStatus?: string
+    paymentId?: string
+    shiprocketCreationSuccess?: boolean
+    shiprocketOrderId?: string
+    shipmentStatus?: string
+    shiprocketError?: string
+  }>(`/admin/orders/${orderId}/sync-payment`, {
+    method: "POST",
+    json: true,
   })
 }
 

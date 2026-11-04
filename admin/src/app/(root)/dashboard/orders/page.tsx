@@ -11,7 +11,9 @@ export default function OrdersPage() {
     downloadInvoice,
     requestCancelOrder,
     retryShiprocket,
+    syncPayment,
     retryingOrderId,
+    syncingOrderId,
   } = useDashboard()
   return (
     <OrdersPanel
@@ -21,7 +23,9 @@ export default function OrdersPage() {
       downloadInvoice={downloadInvoice}
       onRequestCancel={requestCancelOrder}
       onRetryShiprocket={retryShiprocket}
+      onSyncPayment={syncPayment}
       retryingOrderId={retryingOrderId}
+      syncingOrderId={syncingOrderId}
     />
   )
 }

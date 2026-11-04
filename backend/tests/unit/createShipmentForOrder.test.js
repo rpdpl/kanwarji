@@ -41,7 +41,7 @@ describe("createShipmentForOrder", () => {
     jest.clearAllMocks();
   });
 
-  it("creates quick shipment and assigns AWB", async () => {
+  it("creates quick shipment and assigns AWB without passing Instant Pickup courier id", async () => {
     shiprocket.createShiprocketOrder.mockResolvedValueOnce({
       success: true,
       shiprocketOrderId: 100,
@@ -65,6 +65,8 @@ describe("createShipmentForOrder", () => {
     expect(shiprocket.createShiprocketOrder).toHaveBeenCalledWith(
       expect.objectContaining({ shippingMode: "quick" })
     );
+    // Quick must auto-assign — never pass checkout Instant Pickup courier id
+    expect(shiprocket.assignAwb).toHaveBeenCalledWith(200, undefined);
   });
 
   it("falls back to standard when quick create fails", async () => {
@@ -90,5 +92,34 @@ describe("createShipmentForOrder", () => {
     expect(order.shippingMode).toBe("standard");
     expect(order.shippingFallbackUsed).toBe(true);
     expect(shiprocket.createShiprocketOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not fall back to standard when quick create OK but AWB fails", async () => {
+    shiprocket.createShiprocketOrder.mockResolvedValueOnce({
+      success: true,
+      shiprocketOrderId: 111,
+      shipmentId: 222,
+    });
+    shiprocket.assignAwb.mockResolvedValueOnce({
+      success: false,
+      error: "Wallet balance is low. Please recharge.",
+      data: { status: 350, message: "Wallet balance is low" },
+    });
+
+    const order = makeOrder();
+    const result = await createShipmentForOrder(order, {
+      email: "a@b.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.partial).toBe(true);
+    expect(order.shiprocketOrderId).toBe("111");
+    expect(order.shipmentStatus).toBe("failed");
+    expect(order.shiprocketError).toMatch(/Wallet|AWB/i);
+    expect(shiprocket.createShiprocketOrder).toHaveBeenCalledTimes(1);
+    expect(Array.isArray(order.thirdPartyLogs)).toBe(true);
+    expect(order.thirdPartyLogs.some((l) => l.action === "assign_awb_quick" && !l.success)).toBe(
+      true
+    );
   });
 });

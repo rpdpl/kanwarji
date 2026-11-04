@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { logger, logThirdParty } = require("../src/utils/logger");
 
 const SHIPROCKET_BASE = "https://apiv2.shiprocket.in/v1/external";
 const DEFAULT_PICKUP_POSTCODE = "110006";
@@ -45,7 +46,7 @@ async function getShiprocketToken() {
   if (!email || !password) {
     lastAuthError =
       "Missing SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD in backend .env";
-    console.warn("[SHIPROCKET]", lastAuthError);
+    logger.warn({ err: lastAuthError }, "[SHIPROCKET] missing credentials");
     return null;
   }
 
@@ -72,7 +73,12 @@ async function getShiprocketToken() {
     } else {
       lastAuthError = `Shiprocket auth failed${status ? ` (${status})` : ""}: ${apiMsg}`;
     }
-    console.error("[SHIPROCKET] Auth failed:", error.response?.data || error.message);
+    logThirdParty("shiprocket", "auth", {
+      success: false,
+      statusCode: status,
+      error: apiMsg,
+      data: error.response?.data,
+    });
     return null;
   }
 }
@@ -80,6 +86,10 @@ async function getShiprocketToken() {
 async function shiprocketRequest(method, path, data) {
   const token = await getShiprocketToken();
   if (!token) {
+    logThirdParty("shiprocket", `${method.toUpperCase()} ${path}`, {
+      success: false,
+      error: lastAuthError || "Shiprocket authentication failed",
+    });
     return {
       success: false,
       error: lastAuthError || "Shiprocket authentication failed",
@@ -96,17 +106,33 @@ async function shiprocketRequest(method, path, data) {
         "Content-Type": "application/json",
       },
     });
-    return { success: true, data: response.data };
+    logThirdParty("shiprocket", `${method.toUpperCase()} ${path}`, {
+      success: true,
+      statusCode: response.status,
+    });
+    return { success: true, data: response.data, statusCode: response.status };
   } catch (error) {
     const errPayload = error.response?.data || error.message;
-    console.error(`[SHIPROCKET] ${method.toUpperCase()} ${path} failed:`, errPayload);
-    return {
+    const statusCode = error.response?.status;
+    logThirdParty("shiprocket", `${method.toUpperCase()} ${path}`, {
       success: false,
+      statusCode,
       error:
         typeof errPayload === "string"
           ? errPayload
           : errPayload?.message || JSON.stringify(errPayload),
       data: error.response?.data,
+    });
+    return {
+      success: false,
+      error:
+        typeof errPayload === "string"
+          ? errPayload
+          : errPayload?.message ||
+            errPayload?.errors?.[0] ||
+            JSON.stringify(errPayload),
+      data: error.response?.data,
+      statusCode,
     };
   }
 }
@@ -388,8 +414,12 @@ async function assignAwb(shipmentId, courierId) {
   const payload = {
     shipment_id: Number(shipmentId),
   };
+  // Only pass courier_id when explicitly provided (standard). Quick/hyperlocal auto-assigns.
   if (courierId != null && courierId !== "") {
-    payload.courier_id = Number(courierId);
+    const n = Number(courierId);
+    if (Number.isFinite(n) && n > 0) {
+      payload.courier_id = n;
+    }
   }
 
   const result = await shiprocketRequest(
@@ -405,6 +435,24 @@ async function assignAwb(shipmentId, courierId) {
     data?.response?.data?.awb_code ||
     data?.data?.awb_code ||
     null;
+
+  // Shiprocket sometimes returns HTTP 200 with nested failure / no AWB
+  const nestedStatus = data?.response?.status ?? data?.status;
+  const nestedMsg =
+    data?.response?.data?.message ||
+    data?.message ||
+    data?.error ||
+    null;
+  if (!awb || nestedStatus === false || nestedStatus === 0) {
+    return {
+      success: false,
+      error:
+        (typeof nestedMsg === "string" && nestedMsg) ||
+        "Shiprocket AWB assign returned no AWB code",
+      data,
+      statusCode: result.statusCode,
+    };
+  }
 
   return {
     success: true,

@@ -1142,6 +1142,69 @@ app.patch(
     }
 );
 
+// Admin: Sync/verify Instamojo payment → mark paid + create Shiprocket if needed
+app.post(
+    "/api/admin/orders/:id/sync-payment",
+    authenticateToken,
+    requireAdmin,
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+            const order =
+                (await Order.findById(id).catch(() => null)) ||
+                (await Order.findOne({ orderId: id }));
+
+            if (!order) {
+                return res
+                    .status(404)
+                    .json({ success: false, message: "Order not found" });
+            }
+
+            if (order.paymentMethod === "cod") {
+                return res.status(400).json({
+                    success: false,
+                    message: "COD orders do not use Instamojo — use Retry Shiprocket instead",
+                });
+            }
+
+            const {
+                syncInstamojoPaymentForOrder,
+            } = require("../utils/instamojoOrder");
+
+            const result = await syncInstamojoPaymentForOrder(order);
+            if (!result.success) {
+                return res.status(400).json({
+                    success: false,
+                    message: result.error || "Sync failed",
+                    paymentRequestStatus: result.paymentRequestStatus,
+                    paymentStatus: order.paymentStatus,
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: result.shiprocketCreationSuccess
+                    ? "Payment verified and Shiprocket created"
+                    : result.alreadyPaid && !result.shiprocketCreationAttempted
+                      ? "Payment already verified"
+                      : "Payment verified; Shiprocket still needs attention (see shiprocketError)",
+                paymentStatus: result.paymentStatus,
+                paymentId: result.paymentId,
+                shiprocketCreationSuccess: result.shiprocketCreationSuccess,
+                shiprocketOrderId: result.shiprocketOrderId,
+                shipmentStatus: result.shipmentStatus,
+                shiprocketError: result.shiprocketError,
+            });
+        } catch (error) {
+            console.error("Admin sync-payment error:", error);
+            return res.status(500).json({
+                success: false,
+                message: error.message || "Failed to sync payment",
+            });
+        }
+    }
+);
+
 // Admin: Cancel Order
 app.patch(
     "/api/admin/orders/:id/cancel",
