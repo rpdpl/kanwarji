@@ -41,6 +41,26 @@ describe("validateInstamojoBuyer", () => {
     ).toMatch(/Invalid phone/i);
   });
 
+  it("rejects amount below Instamojo minimum ₹9", () => {
+    expect(
+      validateInstamojoBuyer({
+        email: "a@b.com",
+        phone: "9876543210",
+        amount: 8.99,
+      })
+    ).toMatch(/at least ₹9/i);
+  });
+
+  it("accepts amount at Instamojo minimum ₹9", () => {
+    expect(
+      validateInstamojoBuyer({
+        email: "a@b.com",
+        phone: "9876543210",
+        amount: 9,
+      })
+    ).toBeNull();
+  });
+
   it("accepts valid buyer", () => {
     expect(
       validateInstamojoBuyer({

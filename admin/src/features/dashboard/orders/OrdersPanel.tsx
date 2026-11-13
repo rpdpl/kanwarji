@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -21,6 +22,8 @@ type Props = {
   syncingOrderId?: string | null
 }
 
+type PaymentTab = "all" | "paid" | "failed" | "pending"
+
 /** True only when Instamojo/COD payment is actually settled — never infer from paymentId alone (failed attempts also store paymentId). */
 function isReallyPaid(order: Order) {
   if (order.paymentStatus === "paid") return true
@@ -35,6 +38,9 @@ function paymentBadgeLabel(order: Order) {
   if (order.paymentMethod === "cod") {
     if (order.paymentStatus === "paid") return "paid"
     return "cod pending"
+  }
+  if (order.paymentStatus === "failed" && order.paymentFailReason === "abandoned") {
+    return "failed (abandoned)"
   }
   return order.paymentStatus
 }
@@ -51,6 +57,17 @@ function shouldShowOrder(order: Order) {
   return false
 }
 
+function matchesPaymentTab(order: Order, tab: PaymentTab) {
+  if (tab === "all") return true
+  if (tab === "paid") return order.paymentStatus === "paid"
+  if (tab === "failed") return order.paymentStatus === "failed"
+  // pending: online awaiting payment (includes closed-tab with no callback yet)
+  if (tab === "pending") {
+    return order.paymentMethod === "online" && order.paymentStatus === "pending"
+  }
+  return true
+}
+
 export function OrdersPanel({
   orders,
   orderSearchTerm,
@@ -62,6 +79,25 @@ export function OrdersPanel({
   retryingOrderId,
   syncingOrderId,
 }: Props) {
+  const [paymentTab, setPaymentTab] = useState<PaymentTab>("all")
+
+  const visibleBase = orders.filter(shouldShowOrder)
+  const tabCounts = {
+    all: visibleBase.length,
+    paid: visibleBase.filter((o) => o.paymentStatus === "paid").length,
+    failed: visibleBase.filter((o) => o.paymentStatus === "failed").length,
+    pending: visibleBase.filter(
+      (o) => o.paymentMethod === "online" && o.paymentStatus === "pending"
+    ).length,
+  }
+
+  const tabs: { id: PaymentTab; label: string; count: number }[] = [
+    { id: "all", label: "All", count: tabCounts.all },
+    { id: "paid", label: "Paid", count: tabCounts.paid },
+    { id: "failed", label: "Failed", count: tabCounts.failed },
+    { id: "pending", label: "Pending", count: tabCounts.pending },
+  ]
+
   return (
     <div className="space-y-6">
             <Card className="bg-white border border-gray-200 shadow-sm">
@@ -87,6 +123,37 @@ export function OrdersPanel({
                     />
                   </div>
                 </div>
+
+                <div className="flex flex-wrap gap-2 mt-4" role="tablist" aria-label="Payment status filters">
+                  {tabs.map((tab) => {
+                    const active = paymentTab === tab.id
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setPaymentTab(tab.id)}
+                        className={`px-3 py-1.5 rounded-md text-xs sm:text-sm border transition-colors ${
+                          active
+                            ? tab.id === "paid"
+                              ? "bg-green-50 border-green-300 text-green-800"
+                              : tab.id === "failed"
+                                ? "bg-red-50 border-red-300 text-red-800"
+                                : tab.id === "pending"
+                                  ? "bg-orange-50 border-orange-300 text-orange-800"
+                                  : "bg-gray-900 border-gray-900 text-white"
+                            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {tab.label}
+                        <span className={`ml-1.5 font-semibold ${active ? "" : "text-gray-500"}`}>
+                          ({tab.count})
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               </CardHeader>
 
               <CardContent className="p-6">
@@ -99,6 +166,7 @@ export function OrdersPanel({
                         order.orderId?.toLowerCase().includes(orderSearchTerm.toLowerCase())
                       )
                       .filter(shouldShowOrder)
+                      .filter((order) => matchesPaymentTab(order, paymentTab))
 
                     return filteredOrders.length > 0 ? (
                       filteredOrders.map((order) => (
@@ -232,6 +300,26 @@ export function OrdersPanel({
                                     <span className="ml-1 text-orange-600">(COD - collect on delivery)</span>
                                   )}
                                 </div>
+                                {order.paymentStatus === "failed" && (
+                                  <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">
+                                    <div className="font-medium">
+                                      Why failed:{" "}
+                                      {order.paymentFailReason === "abandoned"
+                                        ? "Abandoned"
+                                        : order.paymentFailReason === "gateway_failed"
+                                          ? "Gateway failed"
+                                          : order.paymentFailReason === "webhook_failed"
+                                            ? "Webhook failed"
+                                            : order.paymentFailReason === "not_credited"
+                                              ? "Not credited"
+                                              : order.paymentFailReason || "Unknown"}
+                                    </div>
+                                    <div className="mt-0.5 text-red-700">
+                                      {order.paymentFailMessage ||
+                                        "Payment failed (no detailed reason stored)"}
+                                    </div>
+                                  </div>
+                                )}
                                 <div className="text-gray-600 text-xs sm:text-sm mt-2 border-t border-gray-100 pt-2">
                                   <div className="font-medium text-gray-700 mb-1">Shiprocket</div>
                                   {order.isLocalShiprocket && !order.shippingMode ? (
@@ -431,7 +519,15 @@ export function OrdersPanel({
                       ))
                     ) : (
                       <div className="text-center py-8 text-gray-500 text-sm sm:text-base">
-                        No orders found matching "{orderSearchTerm}"
+                        {orderSearchTerm
+                          ? `No orders found matching "${orderSearchTerm}"`
+                          : paymentTab === "paid"
+                            ? "No paid orders yet"
+                            : paymentTab === "failed"
+                              ? "No failed payments"
+                              : paymentTab === "pending"
+                                ? "No pending online payments"
+                                : "No orders found"}
                       </div>
                     )
                   })()}

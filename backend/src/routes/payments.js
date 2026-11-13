@@ -313,6 +313,7 @@ module.exports = function registerPaymentsRoutes(app) {
         await markOrderPaymentFailed(order, {
           paymentId,
           paymentRequestId,
+          reason: "webhook_failed",
         });
       } else {
         console.warn(`[INSTAMOJO WEBHOOK] Unhandled status: ${status}`);
@@ -328,7 +329,7 @@ module.exports = function registerPaymentsRoutes(app) {
     }
   });
 
-  // Instamojo redirect callback — user lands here after payment
+  // Instamojo redirect callback — user lands here after payment / cancel / abandon
   app.get("/api/instamojo-callback", async (req, res) => {
     console.log("\n\n========================================");
     console.log("🔔 INSTAMOJO CALLBACK HIT!");
@@ -343,19 +344,10 @@ module.exports = function registerPaymentsRoutes(app) {
         orderId,
       });
 
-      if (!payment_id || !orderId) {
-        console.error(
-          "Instamojo callback: Missing parameters - payment_id:",
-          payment_id,
-          "orderId:",
-          orderId
-        );
-        return res.status(400).send("Missing parameters");
+      if (!orderId) {
+        console.error("[INSTAMOJO CALLBACK] Missing orderId");
+        return res.redirect(`${CLIENT_BASE_URL}/payment-failed`);
       }
-
-      console.log(
-        `[INSTAMOJO CALLBACK] Processing payment_id: ${payment_id}, order: ${orderId}, status: ${payment_status}`
-      );
 
       const order = await findOrderByIdOrOrderId(orderId);
       if (!order) {
@@ -374,6 +366,30 @@ module.exports = function registerPaymentsRoutes(app) {
           `${CLIENT_BASE_URL}/payment-success?orderId=${encodeURIComponent(order.orderId)}`
         );
 
+      const statusHint = String(payment_status || "").trim().toLowerCase();
+      const paymentId = String(payment_id || "").trim();
+      const paymentRequestId = String(
+        payment_request_id || order.paymentRequestId || ""
+      ).trim();
+
+      // Abandon / cancel / failed redirect: no payment_id or Failed → mark failed
+      if (!paymentId || statusHint === "failed") {
+        const reason = !paymentId ? "abandoned" : "gateway_failed";
+        console.warn(
+          `[INSTAMOJO CALLBACK] ${reason} for order ${order.orderId} payment_id=${paymentId || "(none)"} status=${payment_status || "(none)"}`
+        );
+        await markOrderPaymentFailed(order, {
+          paymentId: paymentId || undefined,
+          paymentRequestId: paymentRequestId || undefined,
+          reason,
+        });
+        return failRedirect();
+      }
+
+      console.log(
+        `[INSTAMOJO CALLBACK] Processing payment_id: ${paymentId}, order: ${order.orderId}, status: ${payment_status}`
+      );
+
       let payment = null;
       let verified = false;
 
@@ -382,7 +398,7 @@ module.exports = function registerPaymentsRoutes(app) {
         verified = true;
         payment = { status: "Credit" };
       } else {
-        const result = await verifyInstamojoPayment(payment_id);
+        const result = await verifyInstamojoPayment(paymentId);
         verified = result.verified;
         payment = result.payment;
       }
@@ -392,8 +408,8 @@ module.exports = function registerPaymentsRoutes(app) {
           `[INSTAMOJO] Payment successful (Credit). Updating order ${order.orderId}...`
         );
         await markOrderPaidAndFulfill(order, {
-          paymentId: payment_id,
-          paymentRequestId: payment_request_id || order.paymentRequestId,
+          paymentId,
+          paymentRequestId: paymentRequestId || order.paymentRequestId,
           payment,
         });
         console.log(
@@ -402,19 +418,13 @@ module.exports = function registerPaymentsRoutes(app) {
         return successRedirect();
       }
 
-      const statusHint = String(
-        payment?.status || payment_status || ""
-      ).trim();
-      if (
-        statusHint === "Failed" ||
-        statusHint === "failed" ||
-        !verified
-      ) {
-        await markOrderPaymentFailed(order, {
-          paymentId: payment_id,
-          paymentRequestId: payment_request_id || order.paymentRequestId,
-        });
-      }
+      // Not Credit after verify → fail
+      await markOrderPaymentFailed(order, {
+        paymentId,
+        paymentRequestId: paymentRequestId || order.paymentRequestId,
+        reason: "not_credited",
+        message: `Payment not confirmed (Instamojo status: ${payment?.status || payment_status || "unknown"})`,
+      });
 
       console.error(
         `[INSTAMOJO] Payment not successful. Status: ${payment?.status || payment_status}`
@@ -425,6 +435,24 @@ module.exports = function registerPaymentsRoutes(app) {
         "[INSTAMOJO] Callback error:",
         err?.response?.data || err.message || err
       );
+      try {
+        const orderId = req.query?.orderId;
+        if (orderId) {
+          const order = await findOrderByIdOrOrderId(orderId);
+          if (order) {
+            await markOrderPaymentFailed(order, {
+              paymentId: req.query?.payment_id,
+              paymentRequestId:
+                req.query?.payment_request_id || order.paymentRequestId,
+              reason: "unknown",
+              message: "Payment failed due to a processing error on callback",
+            });
+            return res.redirect(
+              `${CLIENT_BASE_URL}/payment-failed?orderId=${encodeURIComponent(order.orderId)}`
+            );
+          }
+        }
+      } catch (_) {}
       return res.redirect(`${CLIENT_BASE_URL}/payment-failed`);
     }
   });

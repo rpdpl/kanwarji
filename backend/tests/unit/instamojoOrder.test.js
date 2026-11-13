@@ -85,4 +85,31 @@ describe("instamojoOrder sync + failed paymentId", () => {
     expect(order.paymentStatus).toBe("failed");
     expect(order.paymentId).toBe("pay_fail");
   });
+
+  it("markOrderPaymentFailed stores system abandon reason", async () => {
+    const order = makeOrder({ paymentId: undefined });
+    const result = await markOrderPaymentFailed(order, {
+      reason: "abandoned",
+    });
+    expect(result.success).toBe(true);
+    expect(order.paymentStatus).toBe("failed");
+    expect(order.paymentFailReason).toBe("abandoned");
+    expect(order.paymentFailMessage).toMatch(/Abandoned/i);
+    expect(order.paymentFailedAt).toBeInstanceOf(Date);
+  });
+
+  it("markOrderPaymentFailed fills reason if already failed without reason", async () => {
+    const order = makeOrder({
+      paymentStatus: "failed",
+      paymentFailReason: "",
+      paymentFailMessage: "",
+    });
+    const result = await markOrderPaymentFailed(order, {
+      reason: "gateway_failed",
+    });
+    expect(result.success).toBe(true);
+    expect(result.skipped).toBe(true);
+    expect(order.paymentFailReason).toBe("gateway_failed");
+    expect(order.paymentFailMessage).toMatch(/Instamojo/i);
+  });
 });

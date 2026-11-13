@@ -4,8 +4,8 @@
   "private": true,
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node init && node server.js",
+    "dev": "node init && nodemon server.js",
     "test": "jest --runInBand",
     "test:unit": "jest --runInBand --testPathPattern=tests/unit",
     "test:api": "jest --runInBand --testPathPattern=tests/api",

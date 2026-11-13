@@ -122,6 +122,9 @@ async function markOrderPaidAndFulfill(
     order.paymentStatus = "paid";
     if (paymentId) order.paymentId = paymentId;
     if (paymentRequestId) order.paymentRequestId = paymentRequestId;
+    order.paymentFailReason = "";
+    order.paymentFailMessage = "";
+    order.paymentFailedAt = undefined;
     order.orderStatus = "confirmed";
     order.updatedAt = new Date();
     order.paidAt = new Date();
@@ -381,11 +384,27 @@ async function syncInstamojoPaymentForOrder(order) {
   };
 }
 
+const PAYMENT_FAIL_MESSAGES = {
+  abandoned:
+    "Abandoned — customer left or cancelled before completing payment",
+  gateway_failed: "Payment failed at Instamojo",
+  not_credited: "Payment not confirmed (Instamojo status was not Credit)",
+  webhook_failed: "Payment failed (Instamojo webhook)",
+  unknown: "Payment failed",
+};
+
 /**
- * Mark pending order as payment failed. No-op if already paid/failed.
+ * Mark pending order as payment failed. No-op if already paid.
  * Note: paymentId may be stored on failed attempts — UI must use paymentStatus, not paymentId.
+ * Fail reason is set automatically by the system (not admin/user).
+ *
+ * @param {import("mongoose").Document} order
+ * @param {{ paymentId?: string, paymentRequestId?: string, reason?: keyof typeof PAYMENT_FAIL_MESSAGES, message?: string }} [opts]
  */
-async function markOrderPaymentFailed(order, { paymentId, paymentRequestId } = {}) {
+async function markOrderPaymentFailed(
+  order,
+  { paymentId, paymentRequestId, reason = "unknown", message } = {}
+) {
   if (!order) {
     return { success: false, error: "Order not found" };
   }
@@ -398,11 +417,34 @@ async function markOrderPaymentFailed(order, { paymentId, paymentRequestId } = {
     return { success: true, skipped: true };
   }
 
+  const reasonKey = PAYMENT_FAIL_MESSAGES[reason] ? reason : "unknown";
+  const failMessage =
+    (message && String(message).trim()) || PAYMENT_FAIL_MESSAGES[reasonKey];
+
+  // Already failed: still fill reason if missing
   if (order.paymentStatus === "failed") {
+    let updated = false;
+    if (paymentId && !order.paymentId) {
+      order.paymentId = paymentId;
+      updated = true;
+    }
+    if (!order.paymentFailReason) {
+      order.paymentFailReason = reasonKey;
+      order.paymentFailMessage = failMessage;
+      if (!order.paymentFailedAt) order.paymentFailedAt = new Date();
+      updated = true;
+    }
+    if (updated) {
+      order.updatedAt = new Date();
+      await order.save();
+    }
     return { success: true, skipped: true };
   }
 
   order.paymentStatus = "failed";
+  order.paymentFailReason = reasonKey;
+  order.paymentFailMessage = failMessage;
+  order.paymentFailedAt = new Date();
   if (paymentId) order.paymentId = paymentId;
   if (paymentRequestId) order.paymentRequestId = paymentRequestId;
   order.updatedAt = new Date();
@@ -410,10 +452,13 @@ async function markOrderPaymentFailed(order, { paymentId, paymentRequestId } = {
     service: "instamojo",
     action: "mark_failed",
     success: true,
-    message: `paymentId=${paymentId || ""}`,
+    message: `reason=${reasonKey} paymentId=${paymentId || ""}`,
   });
   await order.save();
-  logger.info({ orderId: order.orderId }, "[INSTAMOJO] Order marked payment failed");
+  logger.info(
+    { orderId: order.orderId, reason: reasonKey },
+    "[INSTAMOJO] Order marked payment failed"
+  );
   return { success: true, skipped: false };
 }
 
@@ -424,4 +469,5 @@ module.exports = {
   markOrderPaymentFailed,
   syncInstamojoPaymentForOrder,
   needsShiprocketFulfillment,
+  PAYMENT_FAIL_MESSAGES,
 };

@@ -65,6 +65,9 @@ export interface Order {
   paymentStatus: string
   paymentId?: string
   paymentRequestId?: string
+  paymentFailReason?: string
+  paymentFailMessage?: string
+  paymentFailedAt?: string
   orderStatus: string
   totalAmount: number
   specialRequests?: string

@@ -68,8 +68,9 @@ function validateInstamojoBuyer({ email, phone, amount }) {
   }
 
   const amt = Number(amount);
-  if (!Number.isFinite(amt) || amt < 1) {
-    return "Payment amount must be at least ₹1";
+  // Instamojo minimum amount is ₹9
+  if (!Number.isFinite(amt) || amt < 9) {
+    return "Payment amount must be at least ₹9";
   }
   if (amt > 200000) {
     return "Payment amount exceeds Instamojo maximum (₹2,00,000)";
